@@ -75,7 +75,8 @@ class KeyboardView @JvmOverloads constructor(
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val width = MeasureSpec.getSize(widthMeasureSpec)
-        val desiredHeight = resources.getDimensionPixelSize(R.dimen.keyboard_height)
+        val screenHeight = resources.displayMetrics.heightPixels
+        val desiredHeight = (screenHeight * 0.28).toInt()
         keyGap = (width * 0.008f)
 
         val colsPerRow = when (currentLayout) {

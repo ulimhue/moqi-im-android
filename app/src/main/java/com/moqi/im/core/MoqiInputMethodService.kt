@@ -1,15 +1,13 @@
 package com.moqi.im.core
 
 import android.inputmethodservice.InputMethodService
-import android.os.Build
 import android.os.Handler
 import android.os.Looper
-import android.util.DisplayMetrics
-import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
+import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
-import android.view.WindowManager
+import android.widget.FrameLayout
 import com.moqi.im.engine.EngineFactory
 import com.moqi.im.engine.InputEngine
 import com.moqi.im.engine.InputMode
@@ -31,15 +29,15 @@ class MoqiInputMethodService : InputMethodService() {
         }
     }
 
-    private fun disableFullscreen() {
-        window?.window?.apply {
-            setGravity(Gravity.BOTTOM)
-            clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
-            clearFlags(WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)
-        }
-        val dm = resources.displayMetrics
-        val maxHeight = (dm.heightPixels * 0.45).toInt()
-        window?.window?.setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.WRAP_CONTENT)
+    override fun onConfigureWindow(win: android.view.Window, isFullscreen: Boolean, isCandidatesOnly: Boolean) {
+        win.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+    }
+
+    override fun setInputView(view: View) {
+        super.setInputView(view)
+        val inputArea = window.findViewById<FrameLayout>(android.R.id.inputArea)
+        inputArea?.layoutParams?.height = ViewGroup.LayoutParams.MATCH_PARENT
+        view.layoutParams?.height = ViewGroup.LayoutParams.MATCH_PARENT
     }
 
     private var currentMode: InputMode = InputMode.PINYIN
@@ -101,7 +99,6 @@ class MoqiInputMethodService : InputMethodService() {
 
     override fun onStartInput(attribute: EditorInfo?, restarting: Boolean) {
         super.onStartInput(attribute, restarting)
-        disableFullscreen()
         composingText.clear()
         engine.reset()
         updateUI()
