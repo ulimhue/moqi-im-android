@@ -124,17 +124,17 @@ class MoqiInputMethodService : InputMethodService() {
             KeyCode.COMMA -> commitText("，")
             KeyCode.PERIOD -> commitText("。")
             KeyCode.SWITCH_TO_QWERTY -> {
-            isT9Mode = false
-            if (currentMode == InputMode.VOICE) currentMode = modeBeforeVoice
-            updateKeyboard()
-            resetT9State()
-        }
+                isT9Mode = false
+                if (currentMode == InputMode.VOICE) currentMode = modeBeforeVoice
+                updateKeyboard()
+                resetT9State()
+            }
             KeyCode.SWITCH_TO_T9 -> {
-            isT9Mode = true
-            if (currentMode == InputMode.VOICE) currentMode = modeBeforeVoice
-            updateKeyboard()
-            resetT9State()
-        }
+                isT9Mode = true
+                if (currentMode == InputMode.VOICE) currentMode = modeBeforeVoice
+                updateKeyboard()
+                resetT9State()
+            }
             in KeyCode.T9_1..KeyCode.T9_POUND -> handleT9Key(keyCode)
             else -> {
                 val ch = keyCodeToChar(keyCode, isShifted || shiftActive)

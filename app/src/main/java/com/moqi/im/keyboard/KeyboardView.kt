@@ -79,15 +79,17 @@ class KeyboardView @JvmOverloads constructor(
 
         val colsPerRow = when (currentLayout) {
             Layout.T9_CN, Layout.T9_EN -> 3
-            Layout.VOICE -> 1
+            Layout.VOICE -> 2
             else -> 10
         }
         val totalGapWidth = keyGap * (colsPerRow + 1)
         keyWidth = (width - totalGapWidth) / colsPerRow
-        keyHeight = when (currentLayout) {
-            Layout.T9_CN, Layout.T9_EN -> (desiredHeight - keyGap * 5) / 4f
-            else -> (desiredHeight - keyGap * 5) / 4.5f
+        val rowCount = when (currentLayout) {
+            Layout.T9_CN, Layout.T9_EN -> 6
+            Layout.VOICE -> 2
+            else -> 4
         }
+        keyHeight = (desiredHeight - keyGap * (rowCount + 1)) / rowCount
 
         calculateKeyRects(width)
         setMeasuredDimension(width, desiredHeight)
