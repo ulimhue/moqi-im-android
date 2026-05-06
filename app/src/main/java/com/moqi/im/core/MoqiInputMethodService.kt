@@ -3,6 +3,9 @@ package com.moqi.im.core
 import android.inputmethodservice.InputMethodService
 import android.os.Handler
 import android.os.Looper
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
 import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
@@ -11,6 +14,7 @@ import android.widget.FrameLayout
 import com.moqi.im.engine.EngineFactory
 import com.moqi.im.engine.InputEngine
 import com.moqi.im.engine.InputMode
+import com.moqi.im.engine.VoiceEngine
 import com.moqi.im.keyboard.CandidateView
 import com.moqi.im.keyboard.ComposeView
 import com.moqi.im.keyboard.KeyCode
@@ -55,6 +59,8 @@ class MoqiInputMethodService : InputMethodService() {
     private var shiftLocked: Boolean = false
     private var isT9Mode: Boolean = false
     private var modeBeforeVoice: InputMode = InputMode.PINYIN
+    private var voiceEngine: VoiceEngine? = null
+    private var isListening: Boolean = false
 
     private val handler = Handler(Looper.getMainLooper())
     private var t9TapCount: Int = 0
@@ -119,7 +125,16 @@ class MoqiInputMethodService : InputMethodService() {
             KeyCode.SPACE -> handleSpace()
             KeyCode.SHIFT -> handleShift()
             KeyCode.MODE_SWITCH -> cycleInputMode()
-            KeyCode.VOICE -> enterVoiceMode()
+            KeyCode.VOICE -> {
+                if (currentMode == InputMode.VOICE && isListening) {
+                    stopVoiceListening()
+                    composeView?.setComposingText("")
+                } else if (currentMode == InputMode.VOICE) {
+                    startVoiceListening()
+                } else {
+                    enterVoiceMode()
+                }
+            }
             KeyCode.EXIT_VOICE -> exitVoiceMode()
             KeyCode.COMMA -> commitText("，")
             KeyCode.PERIOD -> commitText("。")
@@ -293,9 +308,58 @@ class MoqiInputMethodService : InputMethodService() {
     private fun enterVoiceMode() {
         modeBeforeVoice = if (currentMode == InputMode.VOICE) modeBeforeVoice else currentMode
         switchMode(InputMode.VOICE)
+        startVoiceListening()
+    }
+
+    private fun startVoiceListening() {
+        if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestRecordAudioPermission()
+            return
+        }
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
+            composeView?.setComposingText("设备不支持语音识别")
+            handler.postDelayed({ exitVoiceMode() }, 1500)
+            return
+        }
+        stopVoiceListening()
+        voiceEngine = VoiceEngine()
+        voiceEngine?.initialize(this,
+            onResult = { text ->
+                isListening = false
+                currentInputConnection.commitText(text, 1)
+                exitVoiceMode()
+            },
+            onError = {
+                isListening = false
+                composeView?.setComposingText("语音识别失败，请重试")
+                handler.postDelayed({ exitVoiceMode() }, 1500)
+            }
+        )
+        voiceEngine?.startListening(this)
+        isListening = true
+        composeView?.setComposingText("正在聆听...")
+    }
+
+    @android.annotation.SuppressLint("NewApi")
+    private fun requestRecordAudioPermission() {
+        val intent = android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+            data = android.net.Uri.fromParts("package", packageName, null)
+            addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        startActivity(intent)
+        composeView?.setComposingText("请授权麦克风权限后重试")
+        handler.postDelayed({ exitVoiceMode() }, 2000)
+    }
+
+    private fun stopVoiceListening() {
+        voiceEngine?.stopListening()
+        voiceEngine?.destroy()
+        voiceEngine = null
+        isListening = false
     }
 
     private fun exitVoiceMode() {
+        stopVoiceListening()
         currentMode = modeBeforeVoice
         engine = EngineFactory.create(currentMode)
         composingText.clear()
@@ -415,6 +479,7 @@ class MoqiInputMethodService : InputMethodService() {
     override fun onDestroy() {
         super.onDestroy()
         handler.removeCallbacksAndMessages(null)
+        stopVoiceListening()
         keyboardView = null
         candidateView = null
         composeView = null
