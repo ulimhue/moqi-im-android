@@ -6,20 +6,18 @@
         android:imeSubtypeMode="keyboard"
         android:imeSubtypeLocale="zh_CN"
         android:label="@string/subtype_pinyin"
+        android:isAuxiliary="false"
         android:imeSubtypeExtraValue="default=yes" />
     <subtype
         android:imeSubtypeMode="keyboard"
         android:imeSubtypeLocale="zh_CN"
         android:label="@string/subtype_wubi"
+        android:isAuxiliary="false"
         android:imeSubtypeExtraValue="" />
     <subtype
         android:imeSubtypeMode="keyboard"
         android:imeSubtypeLocale="en_US"
         android:label="@string/subtype_english"
-        android:imeSubtypeExtraValue="" />
-    <subtype
-        android:imeSubtypeMode="voice"
-        android:imeSubtypeLocale="zh_CN"
-        android:label="@string/subtype_voice"
+        android:isAuxiliary="false"
         android:imeSubtypeExtraValue="" />
 </input-method>
