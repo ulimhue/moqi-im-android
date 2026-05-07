@@ -11,6 +11,9 @@ object KeyCode {
     const val COMMA = -107
     const val PERIOD = -108
     const val MENU = -109
+    const val RETYPE = -110
+    const val NUMBER_LAYOUT = -111
+    const val SYMBOL_LAYOUT = -112
     const val T9_1 = -201
     const val T9_2 = -202
     const val T9_3 = -203

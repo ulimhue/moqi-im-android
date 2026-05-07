@@ -111,11 +111,14 @@ class KeyboardView @JvmOverloads constructor(
     private fun updatePaintColors() {
         val dark = isDarkMode
         labelPaint.color = if (dark) 0xFFE0E0E8.toInt() else 0xFF1A1A2E.toInt()
-        labelPaint.textSize = if (currentLayout == Layout.T9_CN || currentLayout == Layout.T9_EN) 32f else 42f
+        labelPaint.textSize = if (isT9Layout()) 38f else 42f
+        labelPaint.textAlign = Paint.Align.CENTER
         subLabelPaint.color = if (dark) 0xFF9090AA.toInt() else 0xFF606080.toInt()
-        subLabelPaint.textSize = 14f
+        subLabelPaint.textSize = if (isT9Layout()) 16f else 14f
+        subLabelPaint.textAlign = Paint.Align.CENTER
         specialKeyPaint.color = if (dark) 0xFFE0E0E8.toInt() else 0xFF1A1A2E.toInt()
         specialKeyPaint.textSize = 28f
+        specialKeyPaint.textAlign = Paint.Align.CENTER
         val bgColor = if (dark) 0xFF1A1A2E.toInt() else 0xFFF0F0F5.toInt()
         setBackgroundColor(bgColor)
     }
@@ -153,7 +156,11 @@ class KeyboardView @JvmOverloads constructor(
         val subLabel = key.subLabel ?: key.swipeText
         if (subLabel != null && !isSpecialKey(key)) {
             subLabelPaint.color = if (dark) 0xFF9090AA.toInt() else 0xFF606080.toInt()
-            val subBaseline = rect.bottom - 10f * resources.displayMetrics.density
+            val subBaseline = if (isT9Layout()) {
+                rect.top + 18f * resources.displayMetrics.density
+            } else {
+                rect.bottom - 10f * resources.displayMetrics.density
+            }
             canvas.drawText(subLabel, rect.centerX(), subBaseline, subLabelPaint)
         }
     }
@@ -358,7 +365,16 @@ class KeyboardView @JvmOverloads constructor(
     }
 
     private fun isSpecialKey(key: KeyDefinition): Boolean =
-        key.keyCode < 0 || key.isSticky
+        (key.keyCode < 0 && !isT9InputKey(key.keyCode) && !isT9PunctuationKey(key.keyCode)) || key.isSticky
+
+    private fun isT9Layout(): Boolean =
+        currentLayout == Layout.T9_CN || currentLayout == Layout.T9_EN
+
+    private fun isT9InputKey(keyCode: Int): Boolean =
+        keyCode in KeyCode.T9_POUND..KeyCode.T9_1
+
+    private fun isT9PunctuationKey(keyCode: Int): Boolean =
+        isT9Layout() && (keyCode == KeyCode.COMMA || keyCode == KeyCode.PERIOD)
 
     private fun qwertyCnRows(): List<List<KeyDefinition>> = listOf(
         rowOf("qwertyuiop", "1234567890"),
@@ -376,65 +392,65 @@ class KeyboardView @JvmOverloads constructor(
 
     private fun t9CnRows(): List<List<KeyDefinition>> = listOf(
         listOf(
-            KeyDefinition("1", KeyEvent.KEYCODE_1, 1f, subLabel = ""),
-            KeyDefinition("2\nabc", KeyCode.T9_2, 1f, subLabel = "abc"),
-            KeyDefinition("3\ndef", KeyCode.T9_3, 1f, subLabel = "def")
+            KeyDefinition("，", KeyCode.COMMA, 0.72f),
+            KeyDefinition("1", KeyCode.T9_1, 1f),
+            KeyDefinition("ABC", KeyCode.T9_2, 1f, subLabel = "2"),
+            KeyDefinition("DEF", KeyCode.T9_3, 1f, subLabel = "3"),
+            KeyDefinition("⌫", KeyCode.DELETE, 0.72f, isRepeatable = true)
         ),
         listOf(
-            KeyDefinition("4\nghi", KeyCode.T9_4, 1f, subLabel = "ghi"),
-            KeyDefinition("5\njkl", KeyCode.T9_5, 1f, subLabel = "jkl"),
-            KeyDefinition("6\nmno", KeyCode.T9_6, 1f, subLabel = "mno")
+            KeyDefinition("。", KeyCode.PERIOD, 0.72f),
+            KeyDefinition("GHI", KeyCode.T9_4, 1f, subLabel = "4"),
+            KeyDefinition("JKL", KeyCode.T9_5, 1f, subLabel = "5"),
+            KeyDefinition("MNO", KeyCode.T9_6, 1f, subLabel = "6"),
+            KeyDefinition("重输", KeyCode.RETYPE, 0.72f)
         ),
         listOf(
-            KeyDefinition("7\npqrs", KeyCode.T9_7, 1f, subLabel = "pqrs"),
-            KeyDefinition("8\ntuv", KeyCode.T9_8, 1f, subLabel = "tuv"),
-            KeyDefinition("9\nwxyz", KeyCode.T9_9, 1f, subLabel = "wxyz")
+            KeyDefinition("?", '?'.code, 0.72f),
+            KeyDefinition("PQRS", KeyCode.T9_7, 1f, subLabel = "7"),
+            KeyDefinition("TUV", KeyCode.T9_8, 1f, subLabel = "8"),
+            KeyDefinition("WXYZ", KeyCode.T9_9, 1f, subLabel = "9"),
+            KeyDefinition("0", KeyCode.T9_0, 0.72f)
         ),
         listOf(
-            KeyDefinition("中/英", KeyCode.MODE_SWITCH, 1f),
-            KeyDefinition("0", KeyCode.T9_0, 1f),
-            KeyDefinition("⌫", KeyCode.DELETE, 1f, isRepeatable = true)
-        ),
-        listOf(
-            KeyDefinition("，", KeyCode.COMMA, 1f),
-            KeyDefinition("空格 🎤", KeyCode.SPACE, 1f),
-            KeyDefinition("。", KeyCode.PERIOD, 1f)
-        ),
-        listOf(
-            KeyDefinition("...", KeyCode.MENU, 1f),
-            KeyDefinition("↵", KeyCode.ENTER, 1f)
+            KeyDefinition("符", KeyCode.SYMBOL_LAYOUT, 0.66f),
+            KeyDefinition("123", KeyCode.NUMBER_LAYOUT, 0.66f),
+            KeyDefinition("空格 🎤", KeyCode.SPACE, 1.5f),
+            KeyDefinition("中/英", KeyCode.MODE_SWITCH, 0.66f),
+            KeyDefinition("...", KeyCode.MENU, 0.66f),
+            KeyDefinition("↵", KeyCode.ENTER, 0.66f)
         )
     )
 
     private fun t9EnRows(): List<List<KeyDefinition>> = listOf(
         listOf(
-            KeyDefinition("1", KeyEvent.KEYCODE_1, 1f, subLabel = ""),
-            KeyDefinition("2\nabc", KeyCode.T9_2, 1f, subLabel = "abc"),
-            KeyDefinition("3\ndef", KeyCode.T9_3, 1f, subLabel = "def")
+            KeyDefinition(",", KeyCode.COMMA, 0.72f),
+            KeyDefinition("1", KeyCode.T9_1, 1f),
+            KeyDefinition("ABC", KeyCode.T9_2, 1f, subLabel = "2"),
+            KeyDefinition("DEF", KeyCode.T9_3, 1f, subLabel = "3"),
+            KeyDefinition("⌫", KeyCode.DELETE, 0.72f, isRepeatable = true)
         ),
         listOf(
-            KeyDefinition("4\nghi", KeyCode.T9_4, 1f, subLabel = "ghi"),
-            KeyDefinition("5\njkl", KeyCode.T9_5, 1f, subLabel = "jkl"),
-            KeyDefinition("6\nmno", KeyCode.T9_6, 1f, subLabel = "mno")
+            KeyDefinition(".", KeyCode.PERIOD, 0.72f),
+            KeyDefinition("GHI", KeyCode.T9_4, 1f, subLabel = "4"),
+            KeyDefinition("JKL", KeyCode.T9_5, 1f, subLabel = "5"),
+            KeyDefinition("MNO", KeyCode.T9_6, 1f, subLabel = "6"),
+            KeyDefinition("Redo", KeyCode.RETYPE, 0.72f)
         ),
         listOf(
-            KeyDefinition("7\npqrs", KeyCode.T9_7, 1f, subLabel = "pqrs"),
-            KeyDefinition("8\ntuv", KeyCode.T9_8, 1f, subLabel = "tuv"),
-            KeyDefinition("9\nwxyz", KeyCode.T9_9, 1f, subLabel = "wxyz")
+            KeyDefinition("?", '?'.code, 0.72f),
+            KeyDefinition("PQRS", KeyCode.T9_7, 1f, subLabel = "7"),
+            KeyDefinition("TUV", KeyCode.T9_8, 1f, subLabel = "8"),
+            KeyDefinition("WXYZ", KeyCode.T9_9, 1f, subLabel = "9"),
+            KeyDefinition("0", KeyCode.T9_0, 0.72f)
         ),
         listOf(
-            KeyDefinition("En/中", KeyCode.MODE_SWITCH, 1f),
-            KeyDefinition("0\n_", KeyCode.T9_0, 1f, subLabel = "_"),
-            KeyDefinition("⌫", KeyCode.DELETE, 1f, isRepeatable = true)
-        ),
-        listOf(
-            KeyDefinition(",", KeyCode.COMMA, 1f),
-            KeyDefinition("Space 🎤", KeyCode.SPACE, 1f),
-            KeyDefinition(".", KeyCode.PERIOD, 1f)
-        ),
-        listOf(
-            KeyDefinition("...", KeyCode.MENU, 1f),
-            KeyDefinition("↵", KeyCode.ENTER, 1f)
+            KeyDefinition("符", KeyCode.SYMBOL_LAYOUT, 0.66f),
+            KeyDefinition("123", KeyCode.NUMBER_LAYOUT, 0.66f),
+            KeyDefinition("Space 🎤", KeyCode.SPACE, 1.5f),
+            KeyDefinition("En/中", KeyCode.MODE_SWITCH, 0.66f),
+            KeyDefinition("...", KeyCode.MENU, 0.66f),
+            KeyDefinition("↵", KeyCode.ENTER, 0.66f)
         )
     )
 

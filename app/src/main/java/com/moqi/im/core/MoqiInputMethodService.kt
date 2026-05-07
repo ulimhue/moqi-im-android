@@ -214,6 +214,9 @@ class MoqiInputMethodService : InputMethodService() {
                 }
             }
             KeyCode.MENU -> showMenuPanel()
+            KeyCode.RETYPE -> clearTextEngineState()
+            KeyCode.SYMBOL_LAYOUT -> showMessage("符号键盘暂未实现")
+            KeyCode.NUMBER_LAYOUT -> showMessage("数字键盘暂未实现")
             KeyCode.EXIT_VOICE -> exitVoiceMode()
             KeyCode.COMMA -> {
                 submitMoqiKey(','.code, ','.code, fallbackOnSuccessOnly = true) {
@@ -231,11 +234,13 @@ class MoqiInputMethodService : InputMethodService() {
             KeyCode.SWITCH_TO_T9 -> {
                 switchRimeSchemaForLayout(t9 = true)
             }
-            in KeyCode.T9_1..KeyCode.T9_POUND -> handleT9Key(keyCode)
+            in KeyCode.T9_POUND..KeyCode.T9_1 -> handleT9Key(keyCode)
             else -> {
                 val mapped = MoqiImeKeyMapper.fromAndroidKeyCode(keyCode, isShifted || shiftActive)
                 if (mapped != null) {
                     handleCharacter(mapped.first, mapped.second)
+                } else if (keyCode >= 0x20) {
+                    commitText(keyCode.toChar().toString())
                 }
             }
         }
