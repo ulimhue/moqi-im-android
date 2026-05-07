@@ -82,6 +82,40 @@ class MoqiImeEngineRunner(
         }
     }
 
+    fun menuState(callback: (List<RimeMenuEntry>, List<String>, String, List<RimeSchemaEntry>, String) -> Unit) {
+        val targetGeneration = generation.get()
+        executor.execute {
+            val activeSession = session
+            val menuEntries = activeSession?.menuEntries().orEmpty()
+            val schemeSets = activeSession?.schemeSets().orEmpty()
+            val currentSchemeSet = activeSession?.currentSchemeSet().orEmpty()
+            val schemas = activeSession?.schemaEntries().orEmpty()
+            val schemaId = activeSession?.currentSchemaId().orEmpty()
+            postIfCurrent(targetGeneration) {
+                callback(menuEntries, schemeSets, currentSchemeSet, schemas, schemaId)
+            }
+        }
+    }
+
+    fun selectSchemeSet(name: String, callback: (EngineResult, String) -> Unit) {
+        val requestId = requestSequence.incrementAndGet()
+        val targetGeneration = generation.get()
+        executor.execute {
+            val start = System.nanoTime()
+            val activeSession = session
+            val result = activeSession?.selectSchemeSet(name) ?: notReadyResult()
+            val oldSession = session
+            val newSession = MoqiImeSession(guid = currentGuid, androidDataDir = androidDataDir)
+            oldSession?.close()
+            session = newSession
+            val schemaId = newSession.currentSchemaId()
+            logDuration("selectSchemeSet", start, "request=$requestId name=$name success=${result.success}")
+            postIfCurrent(targetGeneration) {
+                callback(EngineResult(requestId, result), schemaId)
+            }
+        }
+    }
+
     fun selectSchema(schemaId: String, callback: (EngineResult, String) -> Unit) {
         val requestId = requestSequence.incrementAndGet()
         val targetGeneration = generation.get()
@@ -151,6 +185,7 @@ class MoqiImeEngineRunner(
             composition = "",
             commit = "",
             candidates = emptyList(),
+            candidateEntries = emptyList(),
             showCandidates = false,
             error = "moqi-ime engine is not ready"
         )

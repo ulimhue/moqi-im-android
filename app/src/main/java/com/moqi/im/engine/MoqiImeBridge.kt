@@ -12,12 +12,26 @@ data class RimeSchemaEntry(
     val selected: Boolean
 )
 
+data class RimeMenuEntry(
+    val group: String,
+    val commandId: Int,
+    val text: String,
+    val checked: Boolean,
+    val enabled: Boolean
+)
+
+data class CandidateEntry(
+    val text: String,
+    val comment: String
+)
+
 data class MoqiImeResult(
     val success: Boolean,
     val handled: Boolean,
     val composition: String,
     val commit: String,
     val candidates: List<String>,
+    val candidateEntries: List<CandidateEntry>,
     val showCandidates: Boolean,
     val error: String
 )
@@ -158,6 +172,19 @@ class MoqiImeSession(
         }
     }
 
+    fun menuEntries(): List<RimeMenuEntry> {
+        val activeSession = session ?: return emptyList()
+        return runCatching {
+            val start = System.nanoTime()
+            val entries = activeSession.menuEntries().toKotlinList().mapNotNull { it.toMenuEntry() }
+            logDuration("menuEntries", start, "count=${entries.size}")
+            entries
+        }.getOrElse { error ->
+            Log.e(TAG, "menuEntries failed", error)
+            emptyList()
+        }
+    }
+
     fun currentSchemaId(): String {
         val activeSession = session ?: return ""
         return runCatching {
@@ -204,6 +231,7 @@ class MoqiImeSession(
             composition = "",
             commit = "",
             candidates = emptyList(),
+            candidateEntries = emptyList(),
             showCandidates = false,
             error = initError.ifBlank { "moqi-ime session is not initialized" }
         )
@@ -291,16 +319,16 @@ private fun MobileResponse?.toResult(): MoqiImeResult {
             composition = "",
             commit = "",
             candidates = emptyList(),
+            candidateEntries = emptyList(),
             showCandidates = false,
             error = "empty moqi-ime response"
         )
     }
 
-    val list = candidateList
-    val candidates = if (list == null) {
-        emptyList()
-    } else {
-        (0 until list.len()).map { index -> list.get(index) }
+    val candidates = candidateList.toKotlinList()
+    val entries = candidateEntries.toKotlinList().mapNotNull { it.toCandidateEntry() }
+    val displayEntries = entries.ifEmpty {
+        candidates.map { CandidateEntry(text = it, comment = "") }
     }
 
     return MoqiImeResult(
@@ -309,6 +337,7 @@ private fun MobileResponse?.toResult(): MoqiImeResult {
         composition = compositionString.orEmpty(),
         commit = commitString.orEmpty(),
         candidates = candidates,
+        candidateEntries = displayEntries,
         showCandidates = showCandidates,
         error = error.orEmpty()
     )
@@ -331,6 +360,30 @@ private fun String.toSchemaEntry(): RimeSchemaEntry? {
     )
 }
 
+private fun String.toMenuEntry(): RimeMenuEntry? {
+    val parts = split('\t')
+    val commandId = parts.getOrNull(1)?.toIntOrNull() ?: 0
+    val text = parts.getOrNull(2).orEmpty()
+    if (text.isBlank()) return null
+    return RimeMenuEntry(
+        group = parts.getOrNull(0).orEmpty(),
+        commandId = commandId,
+        text = text,
+        checked = parts.getOrNull(3) == "1",
+        enabled = parts.getOrNull(4) != "0"
+    )
+}
+
+private fun String.toCandidateEntry(): CandidateEntry? {
+    val parts = split('\t')
+    val text = parts.getOrNull(0).orEmpty()
+    if (text.isBlank()) return null
+    return CandidateEntry(
+        text = text,
+        comment = parts.getOrNull(1).orEmpty()
+    )
+}
+
 private fun Throwable.toResult(): MoqiImeResult {
     return MoqiImeResult(
         success = false,
@@ -338,6 +391,7 @@ private fun Throwable.toResult(): MoqiImeResult {
         composition = "",
         commit = "",
         candidates = emptyList(),
+        candidateEntries = emptyList(),
         showCandidates = false,
         error = message.orEmpty().ifBlank { javaClass.simpleName }
     )

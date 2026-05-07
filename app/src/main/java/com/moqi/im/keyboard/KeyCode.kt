@@ -10,6 +10,7 @@ object KeyCode {
     const val SPACE = -106
     const val COMMA = -107
     const val PERIOD = -108
+    const val MENU = -109
     const val T9_1 = -201
     const val T9_2 = -202
     const val T9_3 = -203

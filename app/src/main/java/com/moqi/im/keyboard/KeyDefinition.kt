@@ -6,5 +6,6 @@ data class KeyDefinition(
     val widthFactor: Float = 1f,
     val isRepeatable: Boolean = false,
     val isSticky: Boolean = false,
-    val subLabel: String? = null
+    val subLabel: String? = null,
+    val swipeText: String? = null
 )

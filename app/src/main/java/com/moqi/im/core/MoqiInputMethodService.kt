@@ -13,7 +13,9 @@ import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputMethodManager
 import android.widget.FrameLayout
+import android.widget.Toast
 import com.moqi.im.engine.InputMode
 import com.moqi.im.engine.MoqiImeEngineRunner
 import com.moqi.im.engine.MoqiImeKeyMapper
@@ -22,8 +24,15 @@ import com.moqi.im.engine.SherpaVoiceEngine
 import com.moqi.im.keyboard.CandidateView
 import com.moqi.im.keyboard.ComposeView
 import com.moqi.im.keyboard.KeyCode
+import com.moqi.im.keyboard.KeyboardMenuView
 import com.moqi.im.keyboard.KeyboardView
 import com.moqi.im.voice.ModelManager
+import java.io.File
+import java.net.HttpURLConnection
+import java.net.URL
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
+import java.util.zip.ZipInputStream
 import mobilebridge.Mobilebridge
 
 class MoqiInputMethodService : InputMethodService() {
@@ -61,6 +70,7 @@ class MoqiInputMethodService : InputMethodService() {
     private var currentSchemaId: String = ""
 
     private var keyboardView: KeyboardView? = null
+    private var keyboardMenuView: KeyboardMenuView? = null
     private var candidateView: CandidateView? = null
     private var composeView: ComposeView? = null
     private var imeView: View? = null
@@ -73,6 +83,7 @@ class MoqiInputMethodService : InputMethodService() {
     private var isListening: Boolean = false
 
     private val handler = Handler(Looper.getMainLooper())
+    private val downloadExecutor: ExecutorService = Executors.newSingleThreadExecutor()
     private var t9TapCount: Int = 0
     private var t9CurrentKey: Int = 0
     private var t9Runnable: Runnable? = null
@@ -106,11 +117,54 @@ class MoqiInputMethodService : InputMethodService() {
     override fun onCreateInputView(): View {
         imeView = layoutInflater.inflate(com.moqi.im.R.layout.ime_view, null)
         keyboardView = imeView?.findViewById(com.moqi.im.R.id.keyboard_view)
+        keyboardMenuView = imeView?.findViewById(com.moqi.im.R.id.keyboard_menu_view)
         candidateView = imeView?.findViewById(com.moqi.im.R.id.candidate_view)
         composeView = imeView?.findViewById(com.moqi.im.R.id.compose_view)
 
-        keyboardView?.setOnKeyListener { keyCode, isShifted ->
-            handleKey(keyCode, isShifted)
+        keyboardView?.setOnKeyListener { keyCode, isShifted, swipeText ->
+            if (swipeText != null) {
+                handleSwipeText(swipeText)
+            } else {
+                handleKey(keyCode, isShifted)
+            }
+        }
+        keyboardMenuView?.callback = object : KeyboardMenuView.Callback {
+            override fun onBack() = hideMenuPanel()
+            override fun onCommand(commandId: Int) {
+                engineRunner.command(commandId) { result ->
+                    applyMoqiResult(result.result)
+                    refreshMenuPanel()
+                }
+            }
+            override fun onSchemeSet(name: String) {
+                engineRunner.selectSchemeSet(name) { result, schemaId ->
+                    if (!result.result.success) {
+                        applyMoqiResult(result.result)
+                        return@selectSchemeSet
+                    }
+                    applySchemaLayout(schemaId)
+                    refreshMenuPanel()
+                }
+            }
+            override fun onSchema(schemaId: String) {
+                engineRunner.selectSchema(schemaId) { result, current ->
+                    if (!result.result.success) {
+                        applyMoqiResult(result.result)
+                        return@selectSchema
+                    }
+                    applySchemaLayout(current.ifBlank { schemaId })
+                    refreshMenuPanel()
+                }
+            }
+            override fun onInputMethodPicker() = showInputMethodPicker()
+            override fun onVoiceInput() {
+                hideMenuPanel()
+                enterVoiceMode()
+            }
+            override fun onOpenSettings() = launchSettings()
+            override fun onDownloadScheme(url: String, schemeSetName: String) {
+                downloadSchemeSet(url, schemeSetName)
+            }
         }
 
         candidateView?.setOnCandidateIndexSelectedListener { index ->
@@ -151,6 +205,7 @@ class MoqiInputMethodService : InputMethodService() {
                     enterVoiceMode()
                 }
             }
+            KeyCode.MENU -> showMenuPanel()
             KeyCode.EXIT_VOICE -> exitVoiceMode()
             KeyCode.COMMA -> {
                 submitMoqiKey(','.code, ','.code, fallbackOnSuccessOnly = true) {
@@ -175,6 +230,22 @@ class MoqiInputMethodService : InputMethodService() {
                     handleCharacter(mapped.first, mapped.second)
                 }
             }
+        }
+    }
+
+    private fun handleSwipeText(text: String) {
+        if (text.isBlank()) return
+        if (currentMode == InputMode.ENGLISH) {
+            commitText(text)
+            return
+        }
+        if (text.length == 1) {
+            val ch = text[0]
+            submitMoqiKey(ch.code, ch.code, fallbackOnSuccessOnly = true) {
+                commitText(text)
+            }
+        } else {
+            commitText(text)
         }
     }
 
@@ -418,7 +489,7 @@ class MoqiInputMethodService : InputMethodService() {
         updateComposeView()
 
         if (result.showCandidates) {
-            updateCandidates(result.candidates)
+            candidateView?.setCandidateEntries(result.candidateEntries)
         } else {
             updateCandidates(emptyList())
         }
@@ -515,6 +586,117 @@ class MoqiInputMethodService : InputMethodService() {
         keyboardView?.setLayout(layout)
     }
 
+    private fun showMenuPanel() {
+        keyboardView?.visibility = View.GONE
+        keyboardMenuView?.visibility = View.VISIBLE
+        refreshMenuPanel()
+    }
+
+    private fun hideMenuPanel() {
+        keyboardMenuView?.visibility = View.GONE
+        keyboardView?.visibility = View.VISIBLE
+        updateKeyboard()
+    }
+
+    private fun refreshMenuPanel() {
+        if (keyboardMenuView?.visibility != View.VISIBLE) return
+        engineRunner.menuState { menuEntries, schemeSets, currentSchemeSet, schemas, schemaId ->
+            keyboardMenuView?.render(
+                KeyboardMenuView.MenuState(
+                    menuEntries = menuEntries,
+                    schemeSets = schemeSets,
+                    currentSchemeSet = currentSchemeSet,
+                    schemas = schemas,
+                    currentSchemaId = schemaId
+                )
+            )
+        }
+    }
+
+    private fun showInputMethodPicker() {
+        val imm = getSystemService(INPUT_METHOD_SERVICE) as? InputMethodManager
+        imm?.showInputMethodPicker()
+    }
+
+    private fun downloadSchemeSet(rawUrl: String, rawName: String) {
+        val url = rawUrl.trim()
+        val name = sanitizeSchemeSetName(rawName)
+        if (!url.startsWith("https://", ignoreCase = true) && !url.startsWith("http://", ignoreCase = true)) {
+            showMessage("只支持 http/https URL")
+            return
+        }
+        if (name.isBlank()) {
+            showMessage("请输入方案集名称")
+            return
+        }
+        composeView?.setComposingText("正在下载方案集...")
+        downloadExecutor.execute {
+            val result = runCatching {
+                val root = File(applicationContext.filesDir, "Moqi").apply { mkdirs() }
+                val target = File(root, name).canonicalFile
+                if (!target.path.startsWith(root.canonicalPath + File.separator)) {
+                    error("方案集名称不合法")
+                }
+                if (target.exists()) {
+                    target.deleteRecursively()
+                }
+                target.mkdirs()
+                downloadAndUnzip(url, target)
+                name
+            }
+            handler.post {
+                result.onSuccess { schemeSet ->
+                    showMessage("方案集下载完成: $schemeSet")
+                    engineRunner.selectSchemeSet(schemeSet) { engineResult, schemaId ->
+                        if (!engineResult.result.success) {
+                            applyMoqiResult(engineResult.result)
+                            return@selectSchemeSet
+                        }
+                        applySchemaLayout(schemaId)
+                        refreshMenuPanel()
+                    }
+                }.onFailure { error ->
+                    showMessage("下载失败: ${error.message.orEmpty().ifBlank { error::class.java.simpleName }}")
+                }
+            }
+        }
+    }
+
+    private fun downloadAndUnzip(rawUrl: String, target: File) {
+        val connection = (URL(rawUrl).openConnection() as HttpURLConnection).apply {
+            connectTimeout = 15000
+            readTimeout = 30000
+            instanceFollowRedirects = true
+        }
+        connection.inputStream.use { stream ->
+            ZipInputStream(stream).use { zip ->
+                while (true) {
+                    val entry = zip.nextEntry ?: break
+                    val output = File(target, entry.name).canonicalFile
+                    if (!output.path.startsWith(target.canonicalPath + File.separator)) {
+                        error("ZIP 路径不安全: ${entry.name}")
+                    }
+                    if (entry.isDirectory) {
+                        output.mkdirs()
+                    } else {
+                        output.parentFile?.mkdirs()
+                        output.outputStream().use { zip.copyTo(it) }
+                    }
+                    zip.closeEntry()
+                }
+            }
+        }
+    }
+
+    private fun sanitizeSchemeSetName(name: String): String {
+        return name.trim().replace(Regex("[^A-Za-z0-9_.-]"), "_").trim('_', '.', '-')
+    }
+
+    private fun showMessage(message: String) {
+        composeView?.setComposingText(message)
+        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+    }
+
     private fun loadInputModePreference() {
         val prefs = getSharedPreferences("moqi_im_prefs", MODE_PRIVATE)
         val modeStr = prefs.getString("input_mode", "pinyin") ?: "pinyin"
@@ -540,7 +722,9 @@ class MoqiInputMethodService : InputMethodService() {
         if (::engineRunner.isInitialized) {
             engineRunner.close()
         }
+        downloadExecutor.shutdown()
         keyboardView = null
+        keyboardMenuView = null
         candidateView = null
         composeView = null
         imeView = null

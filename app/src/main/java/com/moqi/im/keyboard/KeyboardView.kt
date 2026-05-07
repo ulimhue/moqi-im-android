@@ -35,9 +35,13 @@ class KeyboardView @JvmOverloads constructor(
     private var pressedKey: Pair<Int, Int>? = null
     private var repeatingKey: Pair<Int, Int>? = null
     private var repeatRunnable: Runnable? = null
+    private var touchStartKey: Pair<Int, Int>? = null
+    private var touchStartX: Float = 0f
+    private var touchStartY: Float = 0f
+    private var swipeTriggered: Boolean = false
 
     private var isShifted: Boolean = false
-    private var onKeyListener: ((Int, Boolean) -> Unit)? = null
+    private var onKeyListener: ((Int, Boolean, String?) -> Unit)? = null
 
     private val isDarkMode: Boolean
         get() = (context.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
@@ -65,7 +69,7 @@ class KeyboardView @JvmOverloads constructor(
         invalidate()
     }
 
-    fun setOnKeyListener(listener: (Int, Boolean) -> Unit) {
+    fun setOnKeyListener(listener: (Int, Boolean, String?) -> Unit) {
         onKeyListener = listener
     }
 
@@ -75,17 +79,9 @@ class KeyboardView @JvmOverloads constructor(
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val width = MeasureSpec.getSize(widthMeasureSpec)
-        val screenHeight = resources.displayMetrics.heightPixels
-        val desiredHeight = (screenHeight * 0.28).toInt()
-        keyGap = (width * 0.008f)
-
-        val colsPerRow = when (currentLayout) {
-            Layout.T9_CN, Layout.T9_EN -> 3
-            Layout.VOICE -> 2
-            else -> 10
-        }
-        val totalGapWidth = keyGap * (colsPerRow + 1)
-        keyWidth = (width - totalGapWidth) / colsPerRow
+        val desiredHeight = MeasureSpec.getSize(heightMeasureSpec).takeIf { it > 0 }
+            ?: (resources.displayMetrics.heightPixels * 0.28f).toInt()
+        keyGap = (width * 0.006f).coerceAtLeast(4f * resources.displayMetrics.density)
         val rowCount = when (currentLayout) {
             Layout.T9_CN, Layout.T9_EN -> 6
             Layout.VOICE -> 2
@@ -144,13 +140,18 @@ class KeyboardView @JvmOverloads constructor(
             }
         }
 
-        val textHeight = textPaint.fontMetrics.let { it.descent - it.ascent }
-        canvas.drawText(text, rect.centerX(), rect.centerY() + textHeight / 3, textPaint)
+        val textBaseline = if (key.swipeText.isNullOrBlank() || isSpecialKey(key)) {
+            rect.centerY() - (textPaint.descent() + textPaint.ascent()) / 2f
+        } else {
+            rect.centerY() - (textPaint.descent() + textPaint.ascent()) / 2f - rect.height() * 0.08f
+        }
+        canvas.drawText(text, rect.centerX(), textBaseline, textPaint)
 
-        if (key.subLabel != null && !isSpecialKey(key)) {
+        val subLabel = key.subLabel ?: key.swipeText
+        if (subLabel != null && !isSpecialKey(key)) {
             subLabelPaint.color = if (dark) 0xFF9090AA.toInt() else 0xFF606080.toInt()
-            val subHeight = subLabelPaint.fontMetrics.let { it.descent - it.ascent }
-            canvas.drawText(key.subLabel, rect.right - 6f * resources.displayMetrics.density, rect.top + subHeight, subLabelPaint)
+            val subBaseline = rect.bottom - 10f * resources.displayMetrics.density
+            canvas.drawText(subLabel, rect.centerX(), subBaseline, subLabelPaint)
         }
     }
 
@@ -162,12 +163,20 @@ class KeyboardView @JvmOverloads constructor(
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 val hit = findKeyAt(event.x, event.y)
+                touchStartKey = hit
+                touchStartX = event.x
+                touchStartY = event.y
+                swipeTriggered = false
                 pressedKey = hit
                 startKeyRepeatIfNeeded(hit)
                 invalidate()
                 return true
             }
             MotionEvent.ACTION_MOVE -> {
+                if (updateSwipeState(event.x, event.y)) {
+                    invalidate()
+                    return true
+                }
                 val hit = findKeyAt(event.x, event.y)
                 if (hit == pressedKey) return true
                 stopKeyRepeat()
@@ -178,11 +187,17 @@ class KeyboardView @JvmOverloads constructor(
             }
             MotionEvent.ACTION_UP -> {
                 val repeatWasActive = repeatRunnable != null
-                pressedKey?.let { keyPos ->
-                    if (!repeatWasActive) {
-                        dispatchKey(keyPos)
+                val startKey = touchStartKey
+                if (swipeTriggered && startKey != null) {
+                    dispatchSwipeKey(startKey)
+                } else {
+                    pressedKey?.let { keyPos ->
+                        if (!repeatWasActive) {
+                            dispatchKey(keyPos)
+                        }
                     }
                 }
+                clearTouchTracking()
                 stopKeyRepeat()
                 pressedKey = null
                 invalidate()
@@ -190,6 +205,7 @@ class KeyboardView @JvmOverloads constructor(
                 return true
             }
             MotionEvent.ACTION_CANCEL -> {
+                clearTouchTracking()
                 stopKeyRepeat()
                 pressedKey = null
                 invalidate()
@@ -204,9 +220,40 @@ class KeyboardView @JvmOverloads constructor(
         return true
     }
 
+    private fun updateSwipeState(x: Float, y: Float): Boolean {
+        if (swipeTriggered) {
+            return true
+        }
+        val startKey = touchStartKey ?: return false
+        val key = keyAt(startKey) ?: return false
+        if (key.swipeText.isNullOrBlank() || key.isRepeatable) {
+            return false
+        }
+        val dx = x - touchStartX
+        val dy = y - touchStartY
+        if (dy > swipeThresholdPx() && kotlin.math.abs(dy) > kotlin.math.abs(dx)) {
+            swipeTriggered = true
+            pressedKey = startKey
+            stopKeyRepeat()
+            return true
+        }
+        return false
+    }
+
+    private fun clearTouchTracking() {
+        touchStartKey = null
+        touchStartX = 0f
+        touchStartY = 0f
+        swipeTriggered = false
+    }
+
+    private fun swipeThresholdPx(): Float {
+        return SWIPE_INPUT_THRESHOLD_DP * resources.displayMetrics.density
+    }
+
     private fun startKeyRepeatIfNeeded(keyPos: Pair<Int, Int>?) {
         stopKeyRepeat()
-        val key = keyPos?.let { (row, col) -> rows.getOrNull(row)?.getOrNull(col) } ?: return
+        val key = keyPos?.let { keyAt(it) } ?: return
         if (!key.isRepeatable) return
 
         repeatingKey = keyPos
@@ -229,10 +276,19 @@ class KeyboardView @JvmOverloads constructor(
     }
 
     private fun dispatchKey(keyPos: Pair<Int, Int>) {
+        val key = keyAt(keyPos) ?: return
+        onKeyListener?.invoke(key.keyCode, isShifted, null)
+    }
+
+    private fun dispatchSwipeKey(keyPos: Pair<Int, Int>) {
+        val key = keyAt(keyPos) ?: return
+        val swipeText = key.swipeText ?: return
+        onKeyListener?.invoke(key.keyCode, isShifted, swipeText)
+    }
+
+    private fun keyAt(keyPos: Pair<Int, Int>): KeyDefinition? {
         val (row, col) = keyPos
-        rows.getOrNull(row)?.getOrNull(col)?.let { key ->
-            onKeyListener?.invoke(key.keyCode, isShifted)
-        }
+        return rows.getOrNull(row)?.getOrNull(col)
     }
 
     private fun findKeyAt(x: Float, y: Float): Pair<Int, Int>? {
@@ -248,10 +304,12 @@ class KeyboardView @JvmOverloads constructor(
 
     private fun calculateKeyRects(totalWidth: Int) {
         keyRects = rows.mapIndexed { rowIdx, row ->
-            val rowWidth = row.sumOf { (it.widthFactor * keyWidth + keyGap * (it.widthFactor - 1f).coerceAtLeast(0f)).toDouble() }.toFloat()
-            var x = (totalWidth - rowWidth) / 2f
+            val totalWeight = row.sumOf { it.widthFactor.toDouble() }.toFloat().coerceAtLeast(1f)
+            val rowGapWidth = keyGap * (row.size + 1)
+            val unitWidth = (totalWidth - rowGapWidth).coerceAtLeast(0f) / totalWeight
+            var x = keyGap
             row.map { key ->
-                val w = key.widthFactor * keyWidth + keyGap * (key.widthFactor - 1f).coerceAtLeast(0f)
+                val w = key.widthFactor * unitWidth
                 val rect = RectF(x, rowIdx * (keyHeight + keyGap) + keyGap, x + w, (rowIdx + 1) * keyHeight + rowIdx * keyGap + keyGap)
                 x += w + keyGap
                 rect
@@ -262,22 +320,23 @@ class KeyboardView @JvmOverloads constructor(
     companion object {
         private const val KEY_REPEAT_INITIAL_DELAY_MS = 350L
         private const val KEY_REPEAT_INTERVAL_MS = 70L
+        private const val SWIPE_INPUT_THRESHOLD_DP = 36f
     }
 
     private fun isSpecialKey(key: KeyDefinition): Boolean =
         key.keyCode < 0 || key.isSticky
 
     private fun qwertyCnRows(): List<List<KeyDefinition>> = listOf(
-        rowOf("qwertyuiop"),
-        rowOf("asdfghjkl"),
-        rowOfWithExtras("zxcvbnm"),
+        rowOf("qwertyuiop", "1234567890"),
+        rowOf("asdfghjkl", listOf("@", "*", "+", "-", "=", "/", "#", "(", ")")),
+        rowOfWithExtras("zxcvbnm", listOf("'", ":", "\"", "?", "!", "~", "\\")),
         bottomRowCn()
     )
 
     private fun qwertyEnRows(): List<List<KeyDefinition>> = listOf(
-        rowOf("qwertyuiop"),
-        rowOf("asdfghjkl"),
-        rowOfWithExtras("zxcvbnm"),
+        rowOf("qwertyuiop", "1234567890"),
+        rowOf("asdfghjkl", listOf("@", "*", "+", "-", "=", "/", "#", "(", ")")),
+        rowOfWithExtras("zxcvbnm", listOf("'", ":", "\"", "?", "!", "~", "\\")),
         bottomRowEn()
     )
 
@@ -347,12 +406,41 @@ class KeyboardView @JvmOverloads constructor(
         )
     )
 
-    private fun rowOf(chars: String): List<KeyDefinition> =
-        chars.map { KeyDefinition(it.toString(), charToKeyCode(it)) }
+    private fun rowOf(chars: String, swipeChars: String? = null): List<KeyDefinition> {
+        return chars.mapIndexed { index, ch ->
+            val swipeText = swipeChars?.getOrNull(index)?.toString()
+            KeyDefinition(
+                label = ch.toString(),
+                keyCode = charToKeyCode(ch),
+                subLabel = swipeText,
+                swipeText = swipeText
+            )
+        }
+    }
 
-    private fun rowOfWithExtras(chars: String): List<KeyDefinition> = listOf(
+    private fun rowOf(chars: String, swipeTexts: List<String>): List<KeyDefinition> {
+        return chars.mapIndexed { index, ch ->
+            val swipeText = swipeTexts.getOrNull(index)
+            KeyDefinition(
+                label = ch.toString(),
+                keyCode = charToKeyCode(ch),
+                subLabel = swipeText,
+                swipeText = swipeText
+            )
+        }
+    }
+
+    private fun rowOfWithExtras(chars: String, swipeTexts: List<String> = emptyList()): List<KeyDefinition> = listOf(
         KeyDefinition("⇧", KeyCode.SHIFT, 1.5f, isSticky = true),
-        *chars.map { KeyDefinition(it.toString(), charToKeyCode(it)) }.toTypedArray(),
+        *chars.mapIndexed { index, ch ->
+            val swipeText = swipeTexts.getOrNull(index)
+            KeyDefinition(
+                label = ch.toString(),
+                keyCode = charToKeyCode(ch),
+                subLabel = swipeText,
+                swipeText = swipeText
+            )
+        }.toTypedArray(),
         KeyDefinition("⌫", KeyCode.DELETE, 1.5f, isRepeatable = true)
     )
 
@@ -361,7 +449,7 @@ class KeyboardView @JvmOverloads constructor(
         KeyDefinition("，", KeyCode.COMMA, 1f),
         KeyDefinition("空格", KeyCode.SPACE, 5f),
         KeyDefinition("。", KeyCode.PERIOD, 1f),
-        KeyDefinition("🎤", KeyCode.VOICE, 1f),
+        KeyDefinition("...", KeyCode.MENU, 1f),
         KeyDefinition("9键", KeyCode.SWITCH_TO_T9, 1f),
         KeyDefinition("↵", KeyCode.ENTER, 1.5f)
     )
@@ -371,7 +459,7 @@ class KeyboardView @JvmOverloads constructor(
         KeyDefinition(",", KeyCode.COMMA, 1f),
         KeyDefinition("Space", KeyCode.SPACE, 5f),
         KeyDefinition(".", KeyCode.PERIOD, 1f),
-        KeyDefinition("🎤", KeyCode.VOICE, 1f),
+        KeyDefinition("...", KeyCode.MENU, 1f),
         KeyDefinition("9键", KeyCode.SWITCH_TO_T9, 1f),
         KeyDefinition("↵", KeyCode.ENTER, 1.5f)
     )

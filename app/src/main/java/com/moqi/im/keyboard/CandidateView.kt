@@ -8,6 +8,7 @@ import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
 import com.moqi.im.R
+import com.moqi.im.engine.CandidateEntry
 
 class CandidateView @JvmOverloads constructor(
     context: Context,
@@ -15,8 +16,17 @@ class CandidateView @JvmOverloads constructor(
     defStyleAttr: Int = 0
 ) : View(context, attrs, defStyleAttr) {
 
-    private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private var candidates: List<String> = emptyList()
+    private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        textSize = 23f * resources.displayMetrics.scaledDensity
+        textAlign = Paint.Align.LEFT
+    }
+    private val commentPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        textSize = 16f * resources.displayMetrics.scaledDensity
+        textAlign = Paint.Align.LEFT
+    }
+    private val dividerPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val highlightPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private var candidates: List<CandidateEntry> = emptyList()
     private var itemRects: List<RectF> = emptyList()
     private var pressedIndex: Int = -1
 
@@ -28,13 +38,14 @@ class CandidateView @JvmOverloads constructor(
                 android.content.res.Configuration.UI_MODE_NIGHT_YES
 
     init {
-        paint.textSize = 36f
-        paint.textAlign = Paint.Align.CENTER
-        val bgColor = if (isDarkMode) 0xFF1A1A2E.toInt() else 0xFFF0F0F5.toInt()
-        setBackgroundColor(bgColor)
+        setBackgroundColor(if (isDarkMode) DARK_BG else LIGHT_BG)
     }
 
     fun setCandidates(candidates: List<String>) {
+        setCandidateEntries(candidates.map { CandidateEntry(it, "") })
+    }
+
+    fun setCandidateEntries(candidates: List<CandidateEntry>) {
         this.candidates = candidates
         pressedIndex = -1
         requestLayout()
@@ -54,29 +65,38 @@ class CandidateView @JvmOverloads constructor(
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
 
-        paint.color = if (isDarkMode) 0xFFE0E0E8.toInt() else 0xFF1A1A2E.toInt()
+        textPaint.color = if (isDarkMode) 0xFFF3F5F7.toInt() else 0xFF20242A.toInt()
+        commentPaint.color = if (isDarkMode) 0xFF9CA3AA.toInt() else 0xFF69727D.toInt()
+        dividerPaint.color = if (isDarkMode) 0xFF3A4148.toInt() else 0xFFD7DCE2.toInt()
+        highlightPaint.color = if (isDarkMode) 0xFF303942.toInt() else 0xFFE5E9EF.toInt()
 
         for ((i, rect) in itemRects.withIndex()) {
             if (i >= candidates.size) break
-            val text = candidates[i]
-            val textHeight = paint.fontMetrics.let { it.descent - it.ascent }
+            val candidate = candidates[i]
             val isSelected = i == pressedIndex
 
             if (isSelected) {
-                val hlPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-                hlPaint.color = if (isDarkMode) 0xFF2A2A3E.toInt() else 0xFFE0E0E8.toInt()
-                canvas.drawRoundRect(rect, 4f * resources.displayMetrics.density, 4f * resources.displayMetrics.density, hlPaint)
+                canvas.drawRoundRect(rect, dp(6f), dp(6f), highlightPaint)
             }
 
-            canvas.drawText(text, rect.centerX(), rect.centerY() + textHeight / 3, paint)
+            val textX = rect.left + dp(14f)
+            val textBaseline = rect.centerY() - (textPaint.descent() + textPaint.ascent()) / 2f
+            canvas.drawText(candidate.text, textX, textBaseline, textPaint)
+            if (candidate.comment.isNotBlank()) {
+                val commentX = textX + textPaint.measureText(candidate.text) + dp(8f)
+                canvas.drawText(candidate.comment, commentX, textBaseline, commentPaint)
+            }
+            if (i < itemRects.lastIndex) {
+                canvas.drawLine(rect.right, dp(8f), rect.right, height - dp(8f), dividerPaint)
+            }
         }
 
         if (candidates.isEmpty()) {
-            paint.color = if (isDarkMode) 0xFF606080.toInt() else 0xFF9090AA.toInt()
-            paint.textSize = 28f
-            val textHeight = paint.fontMetrics.let { it.descent - it.ascent }
-            canvas.drawText("墨奇输入法", width / 2f, height / 2f + textHeight / 3, paint)
-            paint.textSize = 36f
+            commentPaint.color = if (isDarkMode) 0xFF858C94.toInt() else 0xFF8A929C.toInt()
+            commentPaint.textAlign = Paint.Align.CENTER
+            val baseline = height / 2f - (commentPaint.descent() + commentPaint.ascent()) / 2f
+            canvas.drawText("墨奇输入法", width / 2f, baseline, commentPaint)
+            commentPaint.textAlign = Paint.Align.LEFT
         }
     }
 
@@ -114,10 +134,16 @@ class CandidateView @JvmOverloads constructor(
     }
 
     private fun calculateItemRects(totalWidth: Int) {
-        val padding = 8f * resources.displayMetrics.density
-        val itemWidth = (totalWidth - padding * 2) / maxOf(candidates.size, 1).coerceAtMost(5)
-        itemRects = candidates.indices.map { i ->
-            RectF(padding + i * itemWidth, 0f, padding + (i + 1) * itemWidth, height.toFloat())
+        val padding = dp(4f)
+        var x = padding
+        itemRects = candidates.map { candidate ->
+            val desiredWidth = dp(28f) +
+                textPaint.measureText(candidate.text) +
+                if (candidate.comment.isBlank()) 0f else dp(10f) + commentPaint.measureText(candidate.comment)
+            val itemWidth = desiredWidth.coerceIn(dp(72f), totalWidth * 0.42f)
+            RectF(x, 0f, x + itemWidth, height.toFloat()).also {
+                x += itemWidth
+            }
         }
     }
 
@@ -126,5 +152,12 @@ class CandidateView @JvmOverloads constructor(
             if (rect.contains(x, rect.centerY())) return i
         }
         return -1
+    }
+
+    private fun dp(value: Float): Float = value * resources.displayMetrics.density
+
+    companion object {
+        private const val DARK_BG = 0xFF20262C.toInt()
+        private const val LIGHT_BG = 0xFFF7F8FA.toInt()
     }
 }
