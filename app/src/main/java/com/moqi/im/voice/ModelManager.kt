@@ -5,14 +5,13 @@ import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.io.FileOutputStream
 import java.net.URL
-import java.util.zip.ZipInputStream
 
 object ModelManager {
     
     private const val TAG = "ModelManager"
     private const val MODEL_BASE_URL = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/"
+    private const val ASSET_MODEL_DIR = "models/sherpa"
     
     // 使用较小的中文流式 Zipformer 模型
     private const val MODEL_ZIP = "sherpa-onnx-streaming-zipformer-zh-14M-2023-02-23.tar.bz2"
@@ -31,7 +30,13 @@ object ModelManager {
     
     fun isModelReady(context: Context): Boolean {
         val modelDir = getModelDir(context)
-        return modelDir.exists() && modelDir.listFiles()?.isNotEmpty() == true
+        return hasModelFiles(modelDir.listFiles()?.map { it.name }.orEmpty()) ||
+            hasModelFiles(context.assets.list(ASSET_MODEL_DIR)?.toList().orEmpty())
+    }
+
+    private fun hasModelFiles(fileNames: List<String>): Boolean {
+        return fileNames.any { it.startsWith("encoder") && it.endsWith(".onnx") } &&
+            fileNames.contains("tokens.txt")
     }
     
     suspend fun downloadModel(context: Context, onProgress: (Float) -> Unit): Result<String> = withContext(Dispatchers.IO) {

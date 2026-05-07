@@ -343,16 +343,14 @@ class MoqiInputMethodService : InputMethodService() {
         
         sherpaVoiceEngine?.startListening(
             onResult = { text ->
-                if (text == "[完成]") {
-                    isListening = false
-                    currentInputConnection.commitText(composingText.toString(), 1)
-                    composingText.clear()
-                    exitVoiceMode()
-                } else {
-                    composingText.clear()
-                    composingText.append(text)
-                    updateComposeView()
-                }
+                composingText.clear()
+                composingText.append(text)
+                updateComposeView()
+            },
+            onFinalResult = { text ->
+                currentInputConnection.commitText(text, 1)
+                composingText.clear()
+                composeView?.setComposingText("正在聆听...")
             },
             onError = {
                 isListening = false

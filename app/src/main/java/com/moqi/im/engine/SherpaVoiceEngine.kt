@@ -8,39 +8,47 @@ import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.os.Handler
 import android.os.Looper
-import android.speech.RecognitionListener
-import android.speech.RecognizerIntent
-import android.speech.SpeechRecognizer
+import android.util.Log
+import com.k2fsa.sherpa.onnx.FeatureConfig
+import com.k2fsa.sherpa.onnx.OnlineModelConfig
+import com.k2fsa.sherpa.onnx.OnlineRecognizer
+import com.k2fsa.sherpa.onnx.OnlineRecognizerConfig
+import com.k2fsa.sherpa.onnx.OnlineStream
+import com.k2fsa.sherpa.onnx.OnlineTransducerModelConfig
 import com.moqi.im.dict.Dictionary
 
 /**
- * 语音输入引擎
- * 
- * 当前实现使用 Android 原生 SpeechRecognizer（需要设备支持）
- * TODO: 集成 Sherpa-onnx 实现完全本地离线识别
- * 
- * Sherpa-onnx 集成步骤：
- * 1. 在 build.gradle 添加依赖: implementation("com.github.k2-fsa:sherpa-onnx:v1.12.1")
- * 2. 下载中文模型文件（约 50-100MB）到应用私有目录
- * 3. 修改此类使用 com.k2fsa.sherpa.onnx.OnlineRecognizer
+ * Sherpa-onnx 本地语音输入引擎。
  */
 class SherpaVoiceEngine(private val context: Context) : InputEngine {
 
-    private var speechRecognizer: SpeechRecognizer? = null
+    private var recognizer: OnlineRecognizer? = null
+    private var stream: OnlineStream? = null
     private var audioRecord: AudioRecord? = null
+    private var recordingThread: Thread? = null
     private var isRecording = false
     private val mainHandler = Handler(Looper.getMainLooper())
     private var onResultCallback: ((String) -> Unit)? = null
+    private var onFinalResultCallback: ((String) -> Unit)? = null
     private var onErrorCallback: (() -> Unit)? = null
     
     private val sampleRate = 16000
-    private val bufferSize = (0.1 * sampleRate).toInt()
+    private val bufferSize = AudioRecord.getMinBufferSize(
+        sampleRate,
+        AudioFormat.CHANNEL_IN_MONO,
+        AudioFormat.ENCODING_PCM_16BIT
+    ).coerceAtLeast((0.1 * sampleRate).toInt())
 
     /**
      * 开始语音识别
      */
-    fun startListening(onResult: (String) -> Unit, onError: () -> Unit) {
+    fun startListening(
+        onResult: (String) -> Unit,
+        onFinalResult: (String) -> Unit,
+        onError: () -> Unit
+    ) {
         onResultCallback = onResult
+        onFinalResultCallback = onFinalResult
         onErrorCallback = onError
 
         if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
@@ -48,99 +56,131 @@ class SherpaVoiceEngine(private val context: Context) : InputEngine {
             return
         }
 
-        // 检查设备是否支持语音识别
-        if (SpeechRecognizer.isRecognitionAvailable(context)) {
-            startSystemSpeechRecognition()
-        } else {
-            // 设备不支持，提示用户
+        try {
+            startSherpaOnnxRecognition()
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to start Sherpa voice recognition", e)
             onError()
         }
     }
 
-    /**
-     * 使用 Android 原生 SpeechRecognizer
-     */
-    private fun startSystemSpeechRecognition() {
-        try {
-            speechRecognizer = SpeechRecognizer.createSpeechRecognizer(context)
-            speechRecognizer?.setRecognitionListener(object : RecognitionListener {
-                override fun onReadyForSpeech(params: android.os.Bundle?) {}
-                override fun onBeginningOfSpeech() {}
-                override fun onRmsChanged(rmsdB: Float) {}
-                override fun onBufferReceived(buffer: ByteArray?) {}
-                override fun onEndOfSpeech() {}
-                override fun onError(error: Int) {
-                    isRecording = false
-                    onErrorCallback?.invoke()
-                }
-                override fun onResults(results: android.os.Bundle?) {
-                    isRecording = false
-                    val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                    if (!matches.isNullOrEmpty()) {
-                        onResultCallback?.invoke(matches[0])
-                    } else {
-                        onErrorCallback?.invoke()
-                    }
-                }
-                override fun onPartialResults(partialResults: android.os.Bundle?) {
-                    val matches = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                    if (!matches.isNullOrEmpty()) {
-                        onResultCallback?.invoke(matches[0])
-                    }
-                }
-                @Suppress("DEPRECATION")
-                override fun onEvent(eventType: Int, params: android.os.Bundle?) {}
-            })
+    private fun startSherpaOnnxRecognition() {
+        stopListening()
 
-            val intent = android.content.Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                putExtra(RecognizerIntent.EXTRA_LANGUAGE, "zh-CN")
-                putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-                putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
-            }
-            speechRecognizer?.startListening(intent)
-            isRecording = true
-        } catch (e: Exception) {
-            e.printStackTrace()
-            onErrorCallback?.invoke()
+        val currentRecognizer = recognizer ?: createRecognizer().also {
+            recognizer = it
         }
+        val currentStream = currentRecognizer.createStream().also {
+            stream = it
+        }
+
+        audioRecord = AudioRecord(
+            MediaRecorder.AudioSource.MIC,
+            sampleRate,
+            AudioFormat.CHANNEL_IN_MONO,
+            AudioFormat.ENCODING_PCM_16BIT,
+            bufferSize * 2
+        )
+
+        val recorder = audioRecord
+        if (recorder == null || recorder.state != AudioRecord.STATE_INITIALIZED) {
+            currentStream.release()
+            stream = null
+            throw IllegalStateException("AudioRecord is not initialized")
+        }
+
+        isRecording = true
+        recorder.startRecording()
+        recordingThread = Thread({
+            runRecognitionLoop(currentRecognizer, currentStream, recorder)
+        }, "SherpaVoiceRecognition").also { it.start() }
     }
 
-    /**
-     * TODO: 使用 Sherpa-onnx 进行本地识别
-     * 
-     * 实现步骤：
-     * 1. 初始化 OnlineRecognizer
-     * 2. 创建 OnlineStream
-     * 3. 使用 AudioRecord 录制音频
-     * 4. 将音频数据送入 stream.acceptWaveform()
-     * 5. 调用 recognizer.decode(stream) 解码
-     * 6. 获取识别结果 recognizer.getResult(stream)
-     */
-    private fun startSherpaOnnxRecognition() {
-        // 模型文件路径
-        // val modelDir = File(context.getExternalFilesDir(null), "sherpa-models")
-        // val config = OnlineRecognizerConfig(...)
-        // val recognizer = OnlineRecognizer(config)
-        // val stream = recognizer.createStream()
-        // ...
+    private fun createRecognizer(): OnlineRecognizer {
+        val modelDir = "models/sherpa"
+        val config = OnlineRecognizerConfig(
+            featConfig = FeatureConfig(sampleRate = sampleRate),
+            modelConfig = OnlineModelConfig(
+                transducer = OnlineTransducerModelConfig(
+                    encoder = "$modelDir/encoder-epoch-99-avg-1.int8.onnx",
+                    decoder = "$modelDir/decoder-epoch-99-avg-1.onnx",
+                    joiner = "$modelDir/joiner-epoch-99-avg-1.int8.onnx",
+                ),
+                tokens = "$modelDir/tokens.txt",
+                numThreads = 2,
+                provider = "cpu",
+                modelType = "zipformer",
+            ),
+            enableEndpoint = true,
+        )
+        return OnlineRecognizer(assetManager = context.assets, config = config)
+    }
+
+    private fun runRecognitionLoop(
+        recognizer: OnlineRecognizer,
+        stream: OnlineStream,
+        recorder: AudioRecord
+    ) {
+        val buffer = ShortArray(bufferSize)
+        var lastText = ""
+
+        try {
+            while (isRecording) {
+                val read = recorder.read(buffer, 0, buffer.size)
+                if (read <= 0) continue
+
+                val samples = FloatArray(read) { index ->
+                    buffer[index] / 32768.0f
+                }
+                stream.acceptWaveform(samples, sampleRate)
+
+                while (recognizer.isReady(stream)) {
+                    recognizer.decode(stream)
+                }
+
+                val text = recognizer.getResult(stream).text
+                if (text.isNotBlank() && text != lastText) {
+                    lastText = text
+                    mainHandler.post { onResultCallback?.invoke(text) }
+                }
+
+                if (recognizer.isEndpoint(stream)) {
+                    if (lastText.isNotBlank()) {
+                        val finalText = lastText
+                        mainHandler.post { onFinalResultCallback?.invoke(finalText) }
+                    }
+                    recognizer.reset(stream)
+                    lastText = ""
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Sherpa recognition loop failed", e)
+            mainHandler.post { onErrorCallback?.invoke() }
+        }
     }
 
     fun stopListening() {
         isRecording = false
-        speechRecognizer?.stopListening()
-        speechRecognizer?.destroy()
-        speechRecognizer = null
-        audioRecord?.stop()
-        audioRecord?.release()
+        recordingThread?.join(500)
+        recordingThread = null
+        runCatching { audioRecord?.stop() }
+        runCatching { audioRecord?.release() }
         audioRecord = null
+        stream?.release()
+        stream = null
     }
 
     fun destroy() {
         stopListening()
+        recognizer?.release()
+        recognizer = null
     }
 
     override fun processInput(input: String): List<String> = emptyList()
     override fun reset() {}
     override fun setDictionary(dict: Dictionary) {}
+
+    private companion object {
+        const val TAG = "SherpaVoiceEngine"
+    }
 }

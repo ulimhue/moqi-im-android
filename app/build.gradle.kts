@@ -13,6 +13,10 @@ android {
         targetSdk = 34
         versionCode = 1
         versionName = "0.1.0"
+
+        ndk {
+            abiFilters += "arm64-v8a"
+        }
     }
 
     sourceSets {
@@ -46,8 +50,7 @@ dependencies {
     implementation("com.google.android.material:material:1.11.0")
     implementation("androidx.preference:preference-ktx:1.2.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
-    // Sherpa-onnx 本地语音识别（需要手动下载模型到 assets/models）
-    // implementation("com.github.k2-fsa:sherpa-onnx:v1.12.1")
+    implementation(files("libs/sherpa-onnx-1.13.0.aar"))
 }
 
 // 应用模型下载脚本（可选：构建时自动下载模型）
