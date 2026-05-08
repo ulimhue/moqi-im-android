@@ -6,6 +6,7 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
 import android.util.AttributeSet
+import android.util.TypedValue
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
@@ -125,7 +126,11 @@ class KeyboardView @JvmOverloads constructor(
     private fun updatePaintColors() {
         val dark = isDarkMode
         labelPaint.color = if (dark) 0xFFE0E0E8.toInt() else 0xFF1A1A2E.toInt()
-        labelPaint.textSize = if (isT9Layout() || isNumberOrSymbolLayout()) dp(30f) else dp(22f)
+        labelPaint.textSize = when {
+            isT9Layout() -> sp(MAIN_LETTER_TEXT_SIZE_SP)
+            isNumberOrSymbolLayout() -> dp(30f)
+            else -> sp(MAIN_LETTER_TEXT_SIZE_SP)
+        }
         labelPaint.textAlign = Paint.Align.CENTER
         subLabelPaint.color = if (dark) 0xFF9090AA.toInt() else 0xFF606080.toInt()
         subLabelPaint.textSize = if (isT9Layout() || isNumberOrSymbolLayout()) dp(13f) else dp(12f)
@@ -412,6 +417,7 @@ class KeyboardView @JvmOverloads constructor(
         private const val KEY_REPEAT_INTERVAL_MS = 70L
         private const val SPACE_LONG_PRESS_DELAY_MS = 280L
         private const val SWIPE_INPUT_THRESHOLD_DP = 36f
+        private const val MAIN_LETTER_TEXT_SIZE_SP = 21f
     }
 
     private fun isSpecialKey(key: KeyDefinition): Boolean =
@@ -642,6 +648,12 @@ class KeyboardView @JvmOverloads constructor(
     }
 
     private fun dp(value: Float): Float = value * resources.displayMetrics.density
+
+    private fun sp(value: Float): Float = TypedValue.applyDimension(
+        TypedValue.COMPLEX_UNIT_SP,
+        value,
+        resources.displayMetrics
+    )
 
     private fun voiceRows(): List<List<KeyDefinition>> = listOf(
         listOf(

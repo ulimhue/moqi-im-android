@@ -28,10 +28,12 @@ class ComposeView @JvmOverloads constructor(
 
     init {
         setBackgroundColor(0x00000000)
+        visibility = GONE
     }
 
     fun setComposingText(text: String) {
         composingText = text
+        visibility = if (text.isEmpty()) GONE else VISIBLE
         invalidate()
     }
 
@@ -47,7 +49,7 @@ class ComposeView @JvmOverloads constructor(
                 left + textWidth + horizontalPadding * 2,
                 height - 2f * resources.displayMetrics.density
             )
-            bubblePaint.color = if (isDarkMode) 0xCC11161A.toInt() else 0xCC20262C.toInt()
+            bubblePaint.color = if (isDarkMode) 0xAA11161A.toInt() else 0xAA20262C.toInt()
             textPaint.color = 0xFFF2F4F6.toInt()
             canvas.drawRoundRect(rect, 6f * resources.displayMetrics.density, 6f * resources.displayMetrics.density, bubblePaint)
             val baseline = rect.centerY() - (textPaint.descent() + textPaint.ascent()) / 2f

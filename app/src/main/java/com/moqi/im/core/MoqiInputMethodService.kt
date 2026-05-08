@@ -52,23 +52,36 @@ class MoqiInputMethodService : InputMethodService() {
     override fun onComputeInsets(outInsets: Insets?) {
         super.onComputeInsets(outInsets)
         outInsets?.let {
-            it.contentTopInsets = 0
-            it.touchableInsets = Insets.TOUCHABLE_INSETS_CONTENT
+            val panel = inputPanelView
+            if (panel != null && panel.isShown) {
+                panel.getLocationInWindow(inputPanelLocation)
+                val panelTop = inputPanelLocation[1]
+                it.contentTopInsets = panelTop
+                it.visibleTopInsets = panelTop
+            } else {
+                it.contentTopInsets = 0
+                it.visibleTopInsets = 0
+            }
+            it.touchableInsets = Insets.TOUCHABLE_INSETS_VISIBLE
             it.touchableRegion.setEmpty()
         }
     }
 
     override fun onConfigureWindow(win: android.view.Window, isFullscreen: Boolean, isCandidatesOnly: Boolean) {
-        win.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        win.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
     }
 
     override fun setInputView(view: View) {
         super.setInputView(view)
         val screenHeight = resources.displayMetrics.heightPixels
         val imeHeight = (screenHeight * 0.32).toInt()
-        view.layoutParams?.height = imeHeight
+        view.layoutParams?.height = ViewGroup.LayoutParams.MATCH_PARENT
         val inputArea = window?.window?.decorView?.findViewById<FrameLayout>(android.R.id.inputArea)
-        inputArea?.layoutParams?.height = imeHeight
+        inputArea?.layoutParams?.height = ViewGroup.LayoutParams.MATCH_PARENT
+        inputPanelView?.layoutParams?.let { params ->
+            params.height = imeHeight
+            inputPanelView?.layoutParams = params
+        }
     }
 
     private var currentMode: InputMode = InputMode.PINYIN
@@ -80,7 +93,9 @@ class MoqiInputMethodService : InputMethodService() {
     private var keyboardMenuView: KeyboardMenuView? = null
     private var candidateView: CandidateView? = null
     private var composeView: ComposeView? = null
+    private var inputPanelView: View? = null
     private var imeView: View? = null
+    private val inputPanelLocation = IntArray(2)
 
     private var shiftActive: Boolean = false
     private var shiftLocked: Boolean = false
@@ -149,6 +164,7 @@ class MoqiInputMethodService : InputMethodService() {
         keyboardMenuView = imeView?.findViewById(com.moqi.im.R.id.keyboard_menu_view)
         candidateView = imeView?.findViewById(com.moqi.im.R.id.candidate_view)
         composeView = imeView?.findViewById(com.moqi.im.R.id.compose_view)
+        inputPanelView = imeView?.findViewById(com.moqi.im.R.id.input_panel)
 
         keyboardView?.setOnKeyListener { keyCode, isShifted, swipeText ->
             if (swipeText != null) {
@@ -1020,6 +1036,7 @@ class MoqiInputMethodService : InputMethodService() {
         keyboardMenuView = null
         candidateView = null
         composeView = null
+        inputPanelView = null
         imeView = null
     }
 }
