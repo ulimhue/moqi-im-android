@@ -47,7 +47,7 @@ class KeyboardMenuView @JvmOverloads constructor(
     private val density = resources.displayMetrics.density
     private val content = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
-        setPadding(dp(14), dp(10), dp(14), dp(16))
+        setPadding(dp(10), dp(6), dp(10), dp(10))
     }
     private val downloadUrl = EditText(context).apply {
         hint = "方案集 ZIP URL"
@@ -66,6 +66,7 @@ class KeyboardMenuView @JvmOverloads constructor(
 
     init {
         setBackgroundColor(Color.rgb(240, 240, 245))
+        isFillViewport = true
         addView(content, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
         render(MenuState())
     }
@@ -129,37 +130,37 @@ class KeyboardMenuView @JvmOverloads constructor(
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
-        row.addView(menuButton("←") { callback?.onBack() }, LinearLayout.LayoutParams(dp(54), dp(44)))
+        row.addView(menuButton("←") { callback?.onBack() }, LinearLayout.LayoutParams(dp(50), dp(40)))
         row.addView(TextView(context).apply {
             text = "墨奇菜单"
-            textSize = 18f
+            textSize = 17f
             setTextColor(Color.rgb(26, 26, 46))
             gravity = Gravity.CENTER_VERTICAL
-        }, LinearLayout.LayoutParams(0, dp(44), 1f))
-        row.addView(menuButton("设置") { callback?.onOpenSettings() }, LinearLayout.LayoutParams(dp(72), dp(44)))
+        }, LinearLayout.LayoutParams(0, dp(40), 1f))
+        row.addView(menuButton("设置") { callback?.onOpenSettings() }, LinearLayout.LayoutParams(dp(68), dp(40)))
         content.addView(row)
     }
 
     private fun addSection(title: String) {
         content.addView(TextView(context).apply {
             text = title
-            textSize = 15f
+            textSize = 14f
             setTextColor(Color.rgb(96, 96, 128))
-            setPadding(0, dp(12), 0, dp(6))
+            setPadding(0, dp(8), 0, dp(3))
         })
     }
 
-    private fun addGrid(actions: List<Action>, columns: Int = 4, itemHeight: Int = 64) {
+    private fun addGrid(actions: List<Action>, columns: Int = 4, itemHeight: Int = 56) {
         val grid = GridLayout(context).apply {
             columnCount = columns
-            useDefaultMargins = true
+            useDefaultMargins = false
         }
         actions.forEach { action ->
             val lp = GridLayout.LayoutParams().apply {
                 width = 0
                 height = dp(itemHeight)
                 columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f)
-                setMargins(dp(4), dp(4), dp(4), dp(4))
+                setMargins(dp(3), dp(3), dp(3), dp(3))
             }
             grid.addView(menuButton(action.label, action.onClick), lp)
         }

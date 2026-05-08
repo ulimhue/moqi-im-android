@@ -11,8 +11,8 @@
         android:layout_width="match_parent"
         android:layout_height="@dimen/keyboard_height"
         android:layout_alignParentBottom="true"
-        android:clipChildren="false"
-        android:clipToPadding="false"
+        android:clipChildren="true"
+        android:clipToPadding="true"
         android:background="#F0F0F5">
 
         <com.moqi.im.keyboard.CandidateView
@@ -32,7 +32,7 @@
             android:id="@+id/keyboard_menu_view"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:layout_below="@id/candidate_view"
+            android:layout_alignParentTop="true"
             android:layout_alignParentBottom="true"
             android:visibility="gone" />
 
