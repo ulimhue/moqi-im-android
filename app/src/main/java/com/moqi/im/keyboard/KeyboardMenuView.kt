@@ -10,7 +10,7 @@ import android.view.View
 import android.view.inputmethod.InputMethodManager
 import android.widget.Button
 import android.widget.EditText
-import android.widget.GridLayout
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -21,7 +21,7 @@ class KeyboardMenuView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
     defStyleAttr: Int = 0
-) : ScrollView(context, attrs, defStyleAttr) {
+) : LinearLayout(context, attrs, defStyleAttr) {
 
     data class MenuState(
         val menuEntries: List<RimeMenuEntry> = emptyList(),
@@ -45,6 +45,9 @@ class KeyboardMenuView @JvmOverloads constructor(
     var callback: Callback? = null
 
     private val density = resources.displayMetrics.density
+    private val scrollView = ScrollView(context).apply {
+        isFillViewport = true
+    }
     private val content = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
         setPadding(dp(10), dp(6), dp(10), dp(10))
@@ -65,24 +68,16 @@ class KeyboardMenuView @JvmOverloads constructor(
     }
 
     init {
+        orientation = VERTICAL
         setBackgroundColor(Color.rgb(240, 240, 245))
-        isFillViewport = true
-        addView(content, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+        addView(createHeader(), LayoutParams(LayoutParams.MATCH_PARENT, dp(48)))
+        scrollView.addView(content, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT))
+        addView(scrollView, LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f))
         render(MenuState())
     }
 
     fun render(state: MenuState) {
         content.removeAllViews()
-        addHeader()
-        addSection("常用")
-        addGrid(
-            listOf(
-                Action("输入法设置") { callback?.onOpenSettings() },
-                Action("切换输入法") { callback?.onInputMethodPicker() },
-                Action("长按空格语音") { callback?.onBack() },
-                Action("键盘") { callback?.onBack() }
-            )
-        )
 
         val commandItems = state.menuEntries.filter { it.commandId != 0 && it.text.isNotBlank() }
         val statusItems = commandItems.filter { it.group.isBlank() }.take(12)
@@ -125,20 +120,20 @@ class KeyboardMenuView @JvmOverloads constructor(
         addDownloadSection()
     }
 
-    private fun addHeader() {
-        val row = LinearLayout(context).apply {
+    private fun createHeader(): View {
+        return LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(10), dp(6), dp(10), dp(2))
+            addView(menuButton("←") { callback?.onBack() }, LinearLayout.LayoutParams(dp(50), dp(40)))
+            addView(TextView(context).apply {
+                text = "墨奇菜单"
+                textSize = 17f
+                setTextColor(Color.rgb(26, 26, 46))
+                gravity = Gravity.CENTER_VERTICAL
+            }, LinearLayout.LayoutParams(0, dp(40), 1f))
+            addView(menuButton("设置") { callback?.onOpenSettings() }, LinearLayout.LayoutParams(dp(68), dp(40)))
         }
-        row.addView(menuButton("←") { callback?.onBack() }, LinearLayout.LayoutParams(dp(50), dp(40)))
-        row.addView(TextView(context).apply {
-            text = "墨奇菜单"
-            textSize = 17f
-            setTextColor(Color.rgb(26, 26, 46))
-            gravity = Gravity.CENTER_VERTICAL
-        }, LinearLayout.LayoutParams(0, dp(40), 1f))
-        row.addView(menuButton("设置") { callback?.onOpenSettings() }, LinearLayout.LayoutParams(dp(68), dp(40)))
-        content.addView(row)
     }
 
     private fun addSection(title: String) {
@@ -151,20 +146,22 @@ class KeyboardMenuView @JvmOverloads constructor(
     }
 
     private fun addGrid(actions: List<Action>, columns: Int = 4, itemHeight: Int = 56) {
-        val grid = GridLayout(context).apply {
-            columnCount = columns
-            useDefaultMargins = false
-        }
-        actions.forEach { action ->
-            val lp = GridLayout.LayoutParams().apply {
-                width = 0
-                height = dp(itemHeight)
-                columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f)
-                setMargins(dp(3), dp(3), dp(3), dp(3))
+        actions.chunked(columns).forEach { rowActions ->
+            val row = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER
             }
-            grid.addView(menuButton(action.label, action.onClick), lp)
+            rowActions.forEach { action ->
+                val lp = LinearLayout.LayoutParams(0, dp(itemHeight), 1f).apply {
+                    setMargins(dp(3), dp(3), dp(3), dp(3))
+                }
+                row.addView(menuButton(action.label, action.onClick), lp)
+            }
+            repeat(columns - rowActions.size) {
+                row.addView(View(context), LinearLayout.LayoutParams(0, dp(itemHeight), 1f))
+            }
+            content.addView(row, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
         }
-        content.addView(grid, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
     }
 
     private fun addDownloadSection() {
@@ -194,6 +191,12 @@ class KeyboardMenuView @JvmOverloads constructor(
             text = textValue
             textSize = 14f
             isAllCaps = false
+            minWidth = 0
+            minHeight = 0
+            minimumWidth = 0
+            minimumHeight = 0
+            gravity = Gravity.CENTER
+            setPadding(dp(4), 0, dp(4), 0)
             maxLines = 2
             ellipsize = TextUtils.TruncateAt.END
             setOnClickListener(onClick)
