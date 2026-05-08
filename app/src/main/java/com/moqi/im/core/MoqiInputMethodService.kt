@@ -466,11 +466,7 @@ class MoqiInputMethodService : InputMethodService() {
             t9InferredPinyinBySegment.clear()
         }
         updateT9PinyinOptions()
-        if (t9PinyinDigits.contains('1')) {
-            replayT9DigitComposition()
-            return
-        }
-        val engineChar = if (digit == '1') '\'' else digit
+        val engineChar = digit
         submitMoqiKey(engineChar.code, engineChar.code) {
             if (currentMode == InputMode.ENGLISH) {
                 commitText(engineChar.toString())
@@ -493,11 +489,6 @@ class MoqiInputMethodService : InputMethodService() {
 
     private fun replayT9DisplayComposition() {
         val replayText = t9DisplayComposition()
-        replayTextToEngine(replayText)
-    }
-
-    private fun replayT9DigitComposition() {
-        val replayText = T9Pinyin.engineInputForDigits(t9PinyinDigits.toString())
         replayTextToEngine(replayText)
     }
 

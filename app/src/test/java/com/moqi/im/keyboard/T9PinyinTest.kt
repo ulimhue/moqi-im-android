@@ -9,15 +9,17 @@ class T9PinyinTest {
     fun segmentDigits_keepsUnseparatedXianAsOneSegment() {
         assertEquals(listOf("9426"), T9Pinyin.segmentDigits("9426"))
         assertEquals("xian", T9Pinyin.defaultPinyinFor("9426"))
-        assertEquals("9426", T9Pinyin.engineInputForDigits("9426"))
+        assertEquals("xian", T9Pinyin.defaultCompositionForDigits("9426"))
+        assertEquals("9426", T9Pinyin.t9SchemaInputForDigits("9426"))
     }
 
     @Test
-    fun segmentDigits_splitsOnOneAndKeepsRawDigitsForRime() {
+    fun segmentDigits_splitsOnOneAndBuildsSeparatedPinyinForRime() {
         assertEquals(listOf("94", "26"), T9Pinyin.segmentDigits("94126"))
         assertEquals("xi", T9Pinyin.defaultPinyinFor("94"))
         assertEquals("an", T9Pinyin.defaultPinyinFor("26"))
-        assertEquals("94'26", T9Pinyin.engineInputForDigits("94126"))
+        assertEquals("xi'an", T9Pinyin.defaultCompositionForDigits("94126"))
+        assertEquals("94126", T9Pinyin.t9SchemaInputForDigits("94126"))
     }
 
     @Test
