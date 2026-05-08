@@ -43,10 +43,12 @@ class CandidateView @JvmOverloads constructor(
     private var itemRects: List<RectF> = emptyList()
     private var controlRects: List<RectF> = emptyList()
     private var menuButtonRect = RectF()
+    private var emojiButtonRect = RectF()
     private var moreButtonRect = RectF()
     private var pressedIndex: Int = -1
     private var pressedControl: Int = -1
     private var menuButtonPressed = false
+    private var emojiButtonPressed = false
     private var moreButtonPressed = false
     private var expanded = false
     private var scrollOffset = 0f
@@ -71,6 +73,7 @@ class CandidateView @JvmOverloads constructor(
     private var onCandidatePageChange: ((Boolean) -> Unit)? = null
     private var onExpandedLoadNextPage: (() -> Unit)? = null
     private var onMenuClick: (() -> Unit)? = null
+    private var onEmojiClick: (() -> Unit)? = null
     private var onKeyboardDismiss: (() -> Unit)? = null
     private var onClipboardDismiss: (() -> Unit)? = null
 
@@ -93,6 +96,7 @@ class CandidateView @JvmOverloads constructor(
         pressedIndex = -1
         pressedControl = -1
         moreButtonPressed = false
+        emojiButtonPressed = false
         pageChangeRequested = false
         scrollOffset = 0f
         if (candidates.isEmpty()) {
@@ -147,6 +151,10 @@ class CandidateView @JvmOverloads constructor(
 
     fun setOnMenuClickListener(listener: () -> Unit) {
         onMenuClick = listener
+    }
+
+    fun setOnEmojiClickListener(listener: () -> Unit) {
+        onEmojiClick = listener
     }
 
     fun setOnKeyboardDismissListener(listener: () -> Unit) {
@@ -236,6 +244,9 @@ class CandidateView @JvmOverloads constructor(
         if (shouldShowMenuButton()) {
             drawMenuButton(canvas)
         }
+        if (shouldShowEmojiButton()) {
+            drawEmojiButton(canvas)
+        }
         if (candidates.isNotEmpty()) {
             if (moreButtonPressed) {
                 canvas.drawRoundRect(moreButtonRect, dp(6f), dp(6f), highlightPaint)
@@ -254,7 +265,7 @@ class CandidateView @JvmOverloads constructor(
             commentPaint.color = if (isDarkMode) 0xFF858C94.toInt() else 0xFF8A929C.toInt()
             commentPaint.textAlign = Paint.Align.CENTER
             val baseline = height / 2f - (commentPaint.descent() + commentPaint.ascent()) / 2f
-            canvas.drawText("墨奇输入法", (menuButtonRect.right + moreButtonRect.left) / 2f, baseline, commentPaint)
+            canvas.drawText("墨奇输入法", (emojiButtonRect.right + moreButtonRect.left) / 2f, baseline, commentPaint)
             if (moreButtonPressed) {
                 canvas.drawRoundRect(moreButtonRect, dp(6f), dp(6f), highlightPaint)
             }
@@ -306,11 +317,19 @@ class CandidateView @JvmOverloads constructor(
                 isDragging = false
                 pageChangeRequested = false
                 menuButtonPressed = shouldShowMenuButton() && menuButtonRect.contains(event.x, event.y)
+                emojiButtonPressed = !menuButtonPressed &&
+                    shouldShowEmojiButton() &&
+                    emojiButtonRect.contains(event.x, event.y)
                 pressedControl = findControlAt(event.x, event.y)
                 moreButtonPressed = !menuButtonPressed &&
+                    !emojiButtonPressed &&
                     (pressedControl >= 0 || moreButtonRect.contains(event.x, event.y)) &&
                     (candidates.isNotEmpty() || !expanded)
-                pressedIndex = if (menuButtonPressed || moreButtonPressed) -1 else findItemAt(touchContentX(event.x), touchContentY(event.y))
+                pressedIndex = if (menuButtonPressed || emojiButtonPressed || moreButtonPressed) {
+                    -1
+                } else {
+                    findItemAt(touchContentX(event.x), touchContentY(event.y))
+                }
                 invalidate()
                 return true
             }
@@ -318,6 +337,13 @@ class CandidateView @JvmOverloads constructor(
                 if (menuButtonPressed) {
                     if (!menuButtonRect.contains(event.x, event.y)) {
                         menuButtonPressed = false
+                        invalidate()
+                    }
+                    return true
+                }
+                if (emojiButtonPressed) {
+                    if (!emojiButtonRect.contains(event.x, event.y)) {
+                        emojiButtonPressed = false
                         invalidate()
                     }
                     return true
@@ -362,6 +388,15 @@ class CandidateView @JvmOverloads constructor(
                         onMenuClick?.invoke()
                     }
                     menuButtonPressed = false
+                    recycleVelocityTracker()
+                    invalidate()
+                    return true
+                }
+                if (emojiButtonPressed) {
+                    if (emojiButtonRect.contains(event.x, event.y)) {
+                        onEmojiClick?.invoke()
+                    }
+                    emojiButtonPressed = false
                     recycleVelocityTracker()
                     invalidate()
                     return true
@@ -417,6 +452,7 @@ class CandidateView @JvmOverloads constructor(
                 pressedIndex = -1
                 pressedControl = -1
                 menuButtonPressed = false
+                emojiButtonPressed = false
                 moreButtonPressed = false
                 pageChangeRequested = false
                 isDragging = false
@@ -431,13 +467,19 @@ class CandidateView @JvmOverloads constructor(
     private fun calculateItemRects(totalWidth: Int, totalHeight: Float = height.toFloat()) {
         val padding = dp(4f)
         val buttonWidth = dp(48f)
+        val emojiButtonWidth = dp(64f)
         menuButtonRect = if (candidates.isEmpty()) {
             RectF(0f, 0f, buttonWidth, totalHeight)
         } else {
             RectF()
         }
+        emojiButtonRect = if (candidates.isEmpty()) {
+            RectF(menuButtonRect.right, 0f, menuButtonRect.right + emojiButtonWidth, totalHeight)
+        } else {
+            RectF()
+        }
         moreButtonRect = RectF((totalWidth - buttonWidth).coerceAtLeast(0f), 0f, totalWidth.toFloat(), totalHeight)
-        val contentLeft = menuButtonRect.right
+        val contentLeft = if (emojiButtonRect.isEmpty) menuButtonRect.right else emojiButtonRect.right
         val contentRight = moreButtonRect.left
         val contentWidth = (contentRight - contentLeft).coerceAtLeast(0f)
         if (expanded) {
@@ -535,6 +577,8 @@ class CandidateView @JvmOverloads constructor(
 
     private fun shouldShowMenuButton(): Boolean = candidates.isEmpty() && !menuButtonRect.isEmpty
 
+    private fun shouldShowEmojiButton(): Boolean = candidates.isEmpty() && !emojiButtonRect.isEmpty
+
     private fun drawMenuButton(canvas: Canvas) {
         if (menuButtonPressed) {
             canvas.drawRoundRect(menuButtonRect, dp(6f), dp(6f), highlightPaint)
@@ -543,6 +587,17 @@ class CandidateView @JvmOverloads constructor(
         commentPaint.textAlign = Paint.Align.CENTER
         val baseline = menuButtonRect.centerY() - (commentPaint.descent() + commentPaint.ascent()) / 2f
         canvas.drawText("...", menuButtonRect.centerX(), baseline, commentPaint)
+        commentPaint.textAlign = Paint.Align.LEFT
+    }
+
+    private fun drawEmojiButton(canvas: Canvas) {
+        if (emojiButtonPressed) {
+            canvas.drawRoundRect(emojiButtonRect, dp(6f), dp(6f), highlightPaint)
+        }
+        canvas.drawLine(emojiButtonRect.right, dp(8f), emojiButtonRect.right, height - dp(8f), dividerPaint)
+        commentPaint.textAlign = Paint.Align.CENTER
+        val baseline = emojiButtonRect.centerY() - (commentPaint.descent() + commentPaint.ascent()) / 2f
+        canvas.drawText("😀", emojiButtonRect.centerX(), baseline, commentPaint)
         commentPaint.textAlign = Paint.Align.LEFT
     }
 

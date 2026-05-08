@@ -277,6 +277,9 @@ class MoqiInputMethodService : InputMethodService() {
         candidateView?.setOnMenuClickListener {
             showMenuPanel()
         }
+        candidateView?.setOnEmojiClickListener {
+            keyboardView?.setLayout(KeyboardView.Layout.EMOJI)
+        }
         candidateView?.setOnKeyboardDismissListener {
             requestHideSelf(0)
         }
@@ -327,6 +330,7 @@ class MoqiInputMethodService : InputMethodService() {
             KeyCode.RETYPE -> clearTextEngineState()
             KeyCode.SYMBOL_LAYOUT -> keyboardView?.setLayout(KeyboardView.Layout.SYMBOL)
             KeyCode.NUMBER_LAYOUT -> keyboardView?.setLayout(KeyboardView.Layout.NUMBER)
+            KeyCode.EMOJI_LAYOUT -> keyboardView?.setLayout(KeyboardView.Layout.EMOJI)
             KeyCode.RETURN_TO_TEXT -> updateKeyboard()
             KeyCode.TEXT_DOT_COM -> commitText(".com")
             KeyCode.EXIT_VOICE -> exitVoiceMode()

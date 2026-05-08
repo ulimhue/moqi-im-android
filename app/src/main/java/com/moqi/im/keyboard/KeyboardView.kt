@@ -22,7 +22,7 @@ class KeyboardView @JvmOverloads constructor(
 ) : View(context, attrs, defStyleAttr) {
 
     enum class Layout {
-        QWERTY_CN, QWERTY_EN, T9_CN, T9_EN, NUMBER, SYMBOL, VOICE
+        QWERTY_CN, QWERTY_EN, T9_CN, T9_EN, NUMBER, SYMBOL, EMOJI, VOICE
     }
 
     private val keyPaint = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -37,6 +37,8 @@ class KeyboardView @JvmOverloads constructor(
     private var keyGap: Float = 0f
     private var currentLayout: Layout = Layout.QWERTY_CN
     private var currentSymbolPage: SymbolPage = SymbolPage.COMMON
+    private var currentEmojiMode: EmojiMode = EmojiMode.EMOJI
+    private var currentEmojiCategoryIndex: Int = 0
     private var t9PinyinOptions: List<String> = emptyList()
     private var t9SidePanelRect = RectF()
     private var t9SidePanelScrollOffset: Float = 0f
@@ -70,6 +72,15 @@ class KeyboardView @JvmOverloads constructor(
         COMMON, ENGLISH, CHINESE, WEB
     }
 
+    private enum class EmojiMode {
+        EMOJI, KAOMOJI
+    }
+
+    private data class EmojiCategory(
+        val name: String,
+        val items: List<String>
+    )
+
     private val isDarkMode: Boolean
         get() = (context.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
                 android.content.res.Configuration.UI_MODE_NIGHT_YES
@@ -87,6 +98,7 @@ class KeyboardView @JvmOverloads constructor(
             Layout.T9_EN -> t9EnRows()
             Layout.NUMBER -> numberRows()
             Layout.SYMBOL -> symbolRows()
+            Layout.EMOJI -> emojiRows()
             Layout.VOICE -> voiceRows()
         }
         requestLayout()
@@ -113,7 +125,7 @@ class KeyboardView @JvmOverloads constructor(
     }
 
     fun isDirectCommitLayout(): Boolean =
-        currentLayout == Layout.NUMBER || currentLayout == Layout.SYMBOL
+        currentLayout == Layout.NUMBER || currentLayout == Layout.SYMBOL || currentLayout == Layout.EMOJI
 
     fun setT9PinyinOptions(options: List<String>) {
         if (options != t9PinyinOptions) {
@@ -207,12 +219,14 @@ class KeyboardView @JvmOverloads constructor(
         labelPaint.textSize = when {
             isT9Layout() -> sp(MAIN_LETTER_TEXT_SIZE_SP)
             currentLayout == Layout.NUMBER -> dp(30f)
+            currentLayout == Layout.EMOJI && currentEmojiMode == EmojiMode.KAOMOJI -> sp(KAOMOJI_TEXT_SIZE_SP)
+            currentLayout == Layout.EMOJI -> sp(EMOJI_TEXT_SIZE_SP)
             currentLayout == Layout.SYMBOL -> sp(SYMBOL_TEXT_SIZE_SP)
             else -> sp(MAIN_LETTER_TEXT_SIZE_SP)
         }
         labelPaint.textAlign = Paint.Align.CENTER
         subLabelPaint.color = if (dark) 0xFF9090AA.toInt() else 0xFF606080.toInt()
-        subLabelPaint.textSize = if (isNumberOrSymbolLayout()) dp(13f) else dp(12f)
+        subLabelPaint.textSize = if (isNumberOrSymbolLayout() || currentLayout == Layout.EMOJI) dp(13f) else dp(12f)
         subLabelPaint.textAlign = Paint.Align.CENTER
         specialKeyPaint.color = if (dark) 0xFFE0E0E8.toInt() else 0xFF1A1A2E.toInt()
         specialKeyPaint.textSize = dp(16f)
@@ -554,6 +568,7 @@ class KeyboardView @JvmOverloads constructor(
         }
         val key = keyAt(keyPos) ?: return
         if (handleSymbolCategoryKey(key.keyCode)) return
+        if (handleEmojiCategoryKey(key.keyCode)) return
         val directText = if (isDirectCommitLayout() && !isSpecialKey(key) && key.keyCode >= 0) {
             key.commitText ?: key.label
         } else {
@@ -616,6 +631,8 @@ class KeyboardView @JvmOverloads constructor(
         private const val SWIPE_INPUT_THRESHOLD_DP = 36f
         private const val MAIN_LETTER_TEXT_SIZE_SP = 21f
         private const val SYMBOL_TEXT_SIZE_SP = 23f
+        private const val EMOJI_TEXT_SIZE_SP = 25f
+        private const val KAOMOJI_TEXT_SIZE_SP = 13f
         private const val T9_SIDE_PANEL_TEXT_SIZE_SP = 14f
         private const val T9_VISIBLE_SIDE_ITEMS = 4
     }
@@ -650,6 +667,27 @@ class KeyboardView @JvmOverloads constructor(
         }
         currentSymbolPage = page
         rows = symbolRows()
+        requestLayout()
+        invalidate()
+        return true
+    }
+
+    private fun handleEmojiCategoryKey(keyCode: Int): Boolean {
+        when (keyCode) {
+            KeyCode.EMOJI_MODE -> currentEmojiMode = EmojiMode.EMOJI
+            KeyCode.KAOMOJI_MODE -> currentEmojiMode = EmojiMode.KAOMOJI
+            KeyCode.EMOJI_PREV -> {
+                val size = currentEmojiCategories().size
+                currentEmojiCategoryIndex = (currentEmojiCategoryIndex - 1 + size) % size
+            }
+            KeyCode.EMOJI_NEXT -> {
+                val size = currentEmojiCategories().size
+                currentEmojiCategoryIndex = (currentEmojiCategoryIndex + 1) % size
+            }
+            else -> return false
+        }
+        currentEmojiCategoryIndex = currentEmojiCategoryIndex.coerceIn(0, currentEmojiCategories().lastIndex)
+        rows = emojiRows()
         requestLayout()
         invalidate()
         return true
@@ -704,10 +742,9 @@ class KeyboardView @JvmOverloads constructor(
             t9Key("0", KeyCode.T9_0, "0", 0.72f)
         ),
         listOf(
-            KeyDefinition("符", KeyCode.SYMBOL_LAYOUT, 0.66f),
-            KeyDefinition("123", KeyCode.NUMBER_LAYOUT, 0.66f),
-            KeyDefinition("空格 🎤", KeyCode.SPACE, 1.5f),
             KeyDefinition("中/英", KeyCode.MODE_SWITCH, 0.66f),
+            KeyDefinition("123", KeyCode.NUMBER_LAYOUT, 0.66f),
+            KeyDefinition("空格 🎤", KeyCode.SPACE, 2.16f),
             KeyDefinition("符", KeyCode.SYMBOL_LAYOUT, 0.66f),
             KeyDefinition("↵", KeyCode.ENTER, 0.66f)
         )
@@ -736,10 +773,9 @@ class KeyboardView @JvmOverloads constructor(
             t9Key("0", KeyCode.T9_0, "0", 0.72f)
         ),
         listOf(
-            KeyDefinition("符", KeyCode.SYMBOL_LAYOUT, 0.66f),
-            KeyDefinition("123", KeyCode.NUMBER_LAYOUT, 0.66f),
-            KeyDefinition("Space 🎤", KeyCode.SPACE, 1.5f),
             KeyDefinition("En/中", KeyCode.MODE_SWITCH, 0.66f),
+            KeyDefinition("123", KeyCode.NUMBER_LAYOUT, 0.66f),
+            KeyDefinition("Space 🎤", KeyCode.SPACE, 2.16f),
             KeyDefinition("符", KeyCode.SYMBOL_LAYOUT, 0.66f),
             KeyDefinition("↵", KeyCode.ENTER, 0.66f)
         )
@@ -860,6 +896,66 @@ class KeyboardView @JvmOverloads constructor(
         return KeyDefinition(label, keyCode, 1f, commitText = label)
     }
 
+    private fun emojiRows(): List<List<KeyDefinition>> {
+        val category = currentEmojiCategories()[currentEmojiCategoryIndex.coerceIn(0, currentEmojiCategories().lastIndex)]
+        val itemRows = category.items.take(15).chunked(5).map { row ->
+            row.map { emojiKey(it) }
+        }
+        return listOf(
+            listOf(
+                KeyDefinition("Emoji", KeyCode.EMOJI_MODE, 1f, isSticky = currentEmojiMode == EmojiMode.EMOJI),
+                KeyDefinition("颜文字", KeyCode.KAOMOJI_MODE, 1f, isSticky = currentEmojiMode == EmojiMode.KAOMOJI),
+                KeyDefinition("‹", KeyCode.EMOJI_PREV, 0.72f),
+                KeyDefinition(category.name, KeyCode.EMOJI_NEXT, 1.36f, isSticky = true),
+                KeyDefinition("›", KeyCode.EMOJI_NEXT, 0.72f)
+            ),
+            itemRows.getOrElse(0) { emptyList() },
+            itemRows.getOrElse(1) { emptyList() },
+            itemRows.getOrElse(2) { emptyList() },
+            listOf(
+                KeyDefinition("返回", KeyCode.RETURN_TO_TEXT, 1f),
+                KeyDefinition("123", KeyCode.NUMBER_LAYOUT, 1f),
+                KeyDefinition("符", KeyCode.SYMBOL_LAYOUT, 1f),
+                KeyDefinition("⌫", KeyCode.DELETE, 1f, isRepeatable = true)
+            )
+        )
+    }
+
+    private fun emojiKey(label: String): KeyDefinition =
+        KeyDefinition(label, label.first().code, 1f, commitText = label)
+
+    private fun currentEmojiCategories(): List<EmojiCategory> =
+        if (currentEmojiMode == EmojiMode.KAOMOJI) kaomojiCategories else emojiCategories
+
+    private val emojiCategories: List<EmojiCategory> = listOf(
+        EmojiCategory("黄脸", listOf("😀", "😂", "😃", "😄", "😁", "😆", "😅", "🤣", "😊", "🙂", "🙃", "😉", "😍", "😘", "😋")),
+        EmojiCategory("组合", listOf("🫶", "🫰", "🙏", "💪", "👏", "👍", "🎉", "✨", "🔥", "💯", "❤️‍🔥", "🌈", "⭐", "🌟", "💫")),
+        EmojiCategory("人物", listOf("👶", "👧", "🧒", "👦", "👩", "🧑", "👨", "👵", "🧓", "👴", "👮", "👷", "💂", "🕵️", "🧙")),
+        EmojiCategory("手势", listOf("👍", "👎", "👌", "🤌", "🤏", "✌️", "🤞", "🤟", "🤘", "🤙", "👈", "👉", "👆", "👇", "🙏")),
+        EmojiCategory("动物", listOf("🐶", "🐱", "🐭", "🐹", "🐰", "🦊", "🐻", "🐼", "🐨", "🐯", "🦁", "🐮", "🐷", "🐸", "🐵")),
+        EmojiCategory("植物", listOf("🌵", "🎄", "🌲", "🌳", "🌴", "🌱", "🌿", "☘️", "🍀", "🎍", "🪴", "🍃", "🍂", "🍁", "🌾")),
+        EmojiCategory("食物", listOf("🍎", "🍊", "🍌", "🍉", "🍇", "🍓", "🍒", "🥝", "🍅", "🥑", "🍞", "🍔", "🍟", "🍕", "🍜")),
+        EmojiCategory("心形", listOf("❤️", "🧡", "💛", "💚", "💙", "💜", "🖤", "🤍", "🤎", "💔", "❣️", "💕", "💞", "💓", "💗")),
+        EmojiCategory("节日", listOf("🎉", "🎊", "🎈", "🎁", "🎂", "🧧", "🏮", "🎄", "🎅", "🤶", "🧑‍🎄", "🎃", "🧨", "✨", "🎇")),
+        EmojiCategory("运动", listOf("⚽", "🏀", "🏈", "⚾", "🥎", "🎾", "🏐", "🏉", "🥏", "🎱", "🏓", "🏸", "🥅", "🏒", "🏑")),
+        EmojiCategory("交通", listOf("🚗", "🚕", "🚙", "🚌", "🚎", "🏎️", "🚓", "🚑", "🚒", "🚚", "🚲", "🛵", "🏍️", "🚄", "✈️")),
+        EmojiCategory("元素", listOf("☀️", "🌙", "⭐", "⚡", "🔥", "💧", "🌊", "❄️", "☁️", "🌧️", "🌈", "🌪️", "🌍", "🌋", "🪐")),
+        EmojiCategory("标志", listOf("✅", "☑️", "✔️", "❌", "⭕", "❗", "❓", "⚠️", "🚫", "♻️", "🔰", "🔱", "⚜️", "🔆", "🔅")),
+        EmojiCategory("物品", listOf("⌚", "📱", "💻", "⌨️", "🖱️", "📷", "🎧", "🎤", "📦", "💡", "🔦", "🔑", "✂️", "🧰", "🪄")),
+        EmojiCategory("国旗", listOf("🇨🇳", "🇭🇰", "🇲🇴", "🇹🇼", "🇯🇵", "🇰🇷", "🇺🇸", "🇬🇧", "🇫🇷", "🇩🇪", "🇮🇹", "🇪🇸", "🇷🇺", "🇨🇦", "🇦🇺"))
+    )
+
+    private val kaomojiCategories: List<EmojiCategory> = listOf(
+        EmojiCategory("开心", listOf("ヽ(✿ﾟ▽ﾟ)ノ", "o(*￣▽￣*)o", "(p≧w≦q)", "╰(*°▽°*)╯", "(*^▽^*)", "o(￣▽￣)ｄ", "♪(^∇^*)", "ヾ(≧▽≦*)o", "o(*≧▽≦)ツ", "(＾－＾)V", "^O^", "q(≧▽≦q)", "~(￣▽￣)~*", "(๑•̀ㅂ•́)و✧", "(✿◡‿◡)")),
+        EmojiCategory("喜欢", listOf("(≧∇≦)ﾉ", "(´▽`ʃ♡ƪ)", "（づ￣3￣）づ╭❤～", "(* ￣3)(ε￣ *)", "(　ﾟ∀ﾟ) ﾉ♡", "Σ>―(〃°ω°〃)♡→", "(づ￣ ³￣)づ", "(u‿ฺu✿ฺ)", "(*/ω＼*)", "\\(//?//)\\", "(〃'▽'〃)", "(๑❛ᴗ❛๑)", "(◡ᴗ◡✿)", "(︶.̮︶✽)", "(｡･ω･｡)ﾉ♡")),
+        EmojiCategory("哭泣", listOf("(ノへ￣、)", "┭┮﹏┭┮", "(´；ω；`)", "ヽ(；▽；)ノ", "(┳＿┳)...", "╥﹏╥...", "┗( T﹏T )┛", "(；′⌒`)", "ε(┬┬﹏┬┬)3", "o(TヘTo)", "(T_T)", "QAQ", "TAT", "ಥ_ಥ", "(。﹏。*)")),
+        EmojiCategory("生气", listOf("(ー`´ー)", "o(￣ヘ￣o＃)", "(#`O′)", "凸(艹皿艹 )", "(╬￣皿￣)＝○", "╭∩╮(︶︿︶）╭∩╮", "o(一︿一+)o", "(╯‵□′)╯︵┻━┻", "┻━┻︵╰(‵□′)╯︵┻━┻", "(╬▔皿▔)╯", "(# ﾟДﾟ)", "(； ･`д･´)", "(눈益눈)", "ヽ(#`Д´)ﾉ", "٩(๑`^´๑)۶")),
+        EmojiCategory("惊讶", listOf("w(ﾟДﾟ)w", "Σ( ° △ °|||)︴", "(⊙﹏⊙)", "(＠_＠;)", "(°ー°〃)", "Σ(⊙▽⊙\"a", "(￣△￣；)", "(⊙_⊙)?", "Σ(っ °Д °;)っ", "━━(￣ー￣*|||━━", "(◎_x)", "o(°▽、°o)", "┌(。Д。)┐", "X﹏X", "(ﾟДﾟ*)ﾉ")),
+        EmojiCategory("无奈", listOf("╮(￣▽￣\")╭", "┑(￣Д ￣)┍", "ㄟ( ▔, ▔ )ㄏ", "¯\\_(ツ)_/¯", "(ーー゛)", "(￣_,￣ )", "~~( ﹁ ﹁ ) ~~~", "( ﹁ ﹁ ) ~→", "(ー_ー)!!", "(′゜c_，゜` )", "( ￣ー￣)", "(＠￣ー￣＠)", "┌( ´_ゝ` )┐", "(☆-ｖ-)", "(´ｰ∀ｰ`)")),
+        EmojiCategory("动作", listOf("ヾ(￣▽￣)Bye~Bye~", "Hi~ o(*￣▽￣*)ブ", "o(*≧▽≦)ツ┏━┓", "(～￣▽￣)→", "▄︻┻┳═一……", "(╯‵□′)╯炸弹！•••*～●", "↑↑↓↓←→←→ＢＡ", "ヽ(゜▽゜　)－C", "z(-_-z)).....((s-_-)s", "_〆(´Д｀ )", "○|￣|_", "(ง •̀_•́)ง", "╭( ･ㅂ･)و ̑̑", "ｍ(＿　＿)ｍ", "(*°▽°*)八(*°▽°*)♪")),
+        EmojiCategory("动物", listOf("o( =•ω•= )m", "≡ω≡", "（ΦωΦ）", "(*￣(エ)￣)", "(=ﾟωﾟ)=", "(ﾟωﾟ)", "(oﾟωﾟo)", "(*´ω`*)", "( ^ω^)", "(・ω・)", "(｀･ω･)", "(`・ω・´)", "(´・ω・`)", "ヾ(´ωﾟ｀)", "（<ゝω・）☆"))
+    )
+
     private fun rowOf(chars: String, swipeChars: String? = null): List<KeyDefinition> {
         return chars.mapIndexed { index, ch ->
             val swipeText = swipeChars?.getOrNull(index)?.toString()
@@ -899,21 +995,21 @@ class KeyboardView @JvmOverloads constructor(
     )
 
     private fun bottomRowCn(): List<KeyDefinition> = listOf(
-        KeyDefinition("中/英", KeyCode.MODE_SWITCH, 1.5f),
+        KeyDefinition("中/英", KeyCode.MODE_SWITCH, 1.2f),
         KeyDefinition("，", KeyCode.COMMA, 1f),
-        KeyDefinition("空格 🎤", KeyCode.SPACE, 6f),
+        KeyDefinition("空格 🎤", KeyCode.SPACE, 6.5f),
         KeyDefinition("。", KeyCode.PERIOD, 1f),
         KeyDefinition("符", KeyCode.SYMBOL_LAYOUT, 1f),
-        KeyDefinition("↵", KeyCode.ENTER, 1.5f)
+        KeyDefinition("↵", KeyCode.ENTER, 1.3f)
     )
 
     private fun bottomRowEn(): List<KeyDefinition> = listOf(
-        KeyDefinition("中/英", KeyCode.MODE_SWITCH, 1.5f),
+        KeyDefinition("中/英", KeyCode.MODE_SWITCH, 1.2f),
         KeyDefinition(",", KeyCode.COMMA, 1f),
-        KeyDefinition("Space 🎤", KeyCode.SPACE, 6f),
+        KeyDefinition("Space 🎤", KeyCode.SPACE, 6.5f),
         KeyDefinition(".", KeyCode.PERIOD, 1f),
         KeyDefinition("符", KeyCode.SYMBOL_LAYOUT, 1f),
-        KeyDefinition("↵", KeyCode.ENTER, 1.5f)
+        KeyDefinition("↵", KeyCode.ENTER, 1.3f)
     )
 
     private fun charToKeyCode(ch: Char): Int = when (ch) {
