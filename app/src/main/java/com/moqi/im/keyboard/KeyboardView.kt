@@ -307,14 +307,16 @@ class KeyboardView @JvmOverloads constructor(
         val textBaseline = if (key.swipeText.isNullOrBlank() || isSpecialKey(key)) {
             rect.centerY() - (textPaint.descent() + textPaint.ascent()) / 2f
         } else {
-            rect.centerY() - (textPaint.descent() + textPaint.ascent()) / 2f - rect.height() * 0.08f - dp(1f)
+            val extraUp = if (isQwertyLayout()) dp(QWERTY_DUAL_LINE_PRIMARY_UP_DP) else 0f
+            rect.centerY() - (textPaint.descent() + textPaint.ascent()) / 2f - rect.height() * 0.08f - dp(1f) - extraUp
         }
         canvas.drawText(text, rect.centerX(), textBaseline, textPaint)
 
         val subLabel = key.subLabel
         if (subLabel != null && !isSpecialKey(key)) {
             subLabelPaint.color = if (dark) 0xFF9090AA.toInt() else 0xFF606080.toInt()
-            val subBaseline = rect.bottom - dp(7f)
+            val subBottomInsetDp = if (isQwertyLayout()) QWERTY_DUAL_LINE_SUB_BOTTOM_INSET_DP else 7f
+            val subBaseline = rect.bottom - dp(subBottomInsetDp)
             canvas.drawText(subLabel, rect.centerX(), subBaseline, subLabelPaint)
         }
     }
@@ -756,6 +758,10 @@ class KeyboardView @JvmOverloads constructor(
         private const val MODE_SWITCH_INACTIVE_TEXT_SP = 12f
         private const val MODE_SWITCH_SLASH_TEXT_SP = 11f
         private const val MODE_SWITCH_INNER_GAP_DP = 1.5f
+        /** 26 键主字母再上移的 dp；副字距底边用 [QWERTY_DUAL_LINE_SUB_BOTTOM_INSET_DP]，与小写字 descender 拉开间距。 */
+        private const val QWERTY_DUAL_LINE_PRIMARY_UP_DP = 4f
+        /** 26 键副字距键帽底边（全局默认 7dp；越小副字越靠下）。 */
+        private const val QWERTY_DUAL_LINE_SUB_BOTTOM_INSET_DP = 3f
         /** Shift 轮廓略细于早期 2.2dp，减轻「粗黑」感。 */
         private const val SHIFT_ARROW_STROKE_DP = 1.55f
         private const val SHIFT_LOCK_UNDERLINE_STROKE_DP = 1.35f
