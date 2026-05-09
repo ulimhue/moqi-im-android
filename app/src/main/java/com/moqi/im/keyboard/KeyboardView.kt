@@ -162,7 +162,7 @@ class KeyboardView @JvmOverloads constructor(
         val width = MeasureSpec.getSize(widthMeasureSpec)
         val desiredHeight = MeasureSpec.getSize(heightMeasureSpec).takeIf { it > 0 }
             ?: (resources.displayMetrics.heightPixels * 0.28f).toInt()
-        keyGap = (width * 0.008f).coerceAtLeast(6f * resources.displayMetrics.density)
+        keyGap = (width * 0.006f).coerceIn(dp(4f), dp(8f))
         val rowCount = rows.size.coerceAtLeast(1)
         keyHeight = (desiredHeight - keyGap * (rowCount + 1)) / rowCount
 
@@ -227,28 +227,32 @@ class KeyboardView @JvmOverloads constructor(
         val dark = isDarkMode
         labelPaint.color = if (dark) 0xFFE0E0E8.toInt() else 0xFF1A1A2E.toInt()
         labelPaint.textSize = when {
-            isT9Layout() -> sp(MAIN_LETTER_TEXT_SIZE_SP)
-            currentLayout == Layout.NUMBER -> dp(30f)
-            currentLayout == Layout.EMOJI && currentEmojiMode == EmojiMode.KAOMOJI -> sp(KAOMOJI_TEXT_SIZE_SP)
-            currentLayout == Layout.EMOJI -> sp(EMOJI_TEXT_SIZE_SP)
-            currentLayout == Layout.SYMBOL -> sp(SYMBOL_TEXT_SIZE_SP)
-            else -> sp(MAIN_LETTER_TEXT_SIZE_SP)
+            isT9Layout() -> keyTextSize(MAIN_LETTER_TEXT_SIZE_SP, 0.42f)
+            currentLayout == Layout.NUMBER -> keyTextSize(30f, 0.58f)
+            currentLayout == Layout.EMOJI && currentEmojiMode == EmojiMode.KAOMOJI -> keyTextSize(KAOMOJI_TEXT_SIZE_SP, 0.38f)
+            currentLayout == Layout.EMOJI -> keyTextSize(EMOJI_TEXT_SIZE_SP, 0.58f)
+            currentLayout == Layout.SYMBOL -> keyTextSize(SYMBOL_TEXT_SIZE_SP, 0.50f)
+            else -> keyTextSize(MAIN_LETTER_TEXT_SIZE_SP, 0.42f)
         }
         labelPaint.textAlign = Paint.Align.CENTER
         labelPaint.style = Paint.Style.FILL
         labelPaint.strokeWidth = 0f
         subLabelPaint.color = if (dark) 0xFF9090AA.toInt() else 0xFF606080.toInt()
-        subLabelPaint.textSize = if (isNumberOrSymbolLayout() || currentLayout == Layout.EMOJI) dp(13f) else dp(12f)
+        subLabelPaint.textSize = if (isNumberOrSymbolLayout() || currentLayout == Layout.EMOJI) {
+            keyTextSize(13f, 0.26f)
+        } else {
+            keyTextSize(12f, 0.24f)
+        }
         subLabelPaint.textAlign = Paint.Align.CENTER
         subLabelPaint.style = Paint.Style.FILL
         subLabelPaint.strokeWidth = 0f
         specialKeyPaint.color = if (dark) 0xFFE0E0E8.toInt() else 0xFF1A1A2E.toInt()
-        specialKeyPaint.textSize = dp(16f)
+        specialKeyPaint.textSize = keyTextSize(16f, 0.42f)
         specialKeyPaint.textAlign = Paint.Align.CENTER
         specialKeyPaint.style = Paint.Style.FILL
         specialKeyPaint.strokeWidth = 0f
         sidePanelTextPaint.color = if (dark) 0xFFE0E0E8.toInt() else 0xFF1A1A2E.toInt()
-        sidePanelTextPaint.textSize = sp(T9_SIDE_PANEL_TEXT_SIZE_SP)
+        sidePanelTextPaint.textSize = keyTextSize(T9_SIDE_PANEL_TEXT_SIZE_SP, 0.36f)
         sidePanelTextPaint.textAlign = Paint.Align.CENTER
         sidePanelTextPaint.style = Paint.Style.FILL
         sidePanelTextPaint.strokeWidth = 0f
@@ -339,18 +343,18 @@ class KeyboardView @JvmOverloads constructor(
             currentLayout == Layout.QWERTY_CN || currentLayout == Layout.T9_CN
         val activePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             textAlign = Paint.Align.LEFT
-            textSize = sp(MODE_SWITCH_ACTIVE_TEXT_SP)
+            textSize = keyTextSize(MODE_SWITCH_ACTIVE_TEXT_SP, 0.40f)
             color = if (dark) 0xFFECECF4.toInt() else 0xFF0D0D12.toInt()
             isFakeBoldText = false
         }
         val inactivePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             textAlign = Paint.Align.LEFT
-            textSize = sp(MODE_SWITCH_INACTIVE_TEXT_SP)
+            textSize = keyTextSize(MODE_SWITCH_INACTIVE_TEXT_SP, 0.28f)
             color = if (dark) 0xFF6E6E82.toInt() else 0xFF9EA0B0.toInt()
         }
         val slashPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             textAlign = Paint.Align.LEFT
-            textSize = sp(MODE_SWITCH_SLASH_TEXT_SP)
+            textSize = keyTextSize(MODE_SWITCH_SLASH_TEXT_SP, 0.24f)
             color = if (dark) 0xFF5C5C70.toInt() else 0xFFC8CAD6.toInt()
         }
         val left = if (chineseActive) "中" else "英"
@@ -1162,6 +1166,9 @@ class KeyboardView @JvmOverloads constructor(
     }
 
     private fun dp(value: Float): Float = value * resources.displayMetrics.density
+
+    private fun keyTextSize(maxSp: Float, rowHeightRatio: Float): Float =
+        sp(maxSp).coerceAtMost(keyHeight * rowHeightRatio)
 
     private fun spaceBarLabel(base: String): String =
         if (BuildConfig.VOICE_INPUT_ENABLED) "$base 🎤" else base

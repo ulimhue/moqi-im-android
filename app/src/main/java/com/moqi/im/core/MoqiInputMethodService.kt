@@ -5,6 +5,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.inputmethodservice.InputMethodService
 import android.media.AudioManager
 import android.net.Uri
@@ -83,11 +84,16 @@ class MoqiInputMethodService : InputMethodService() {
 
     override fun setInputView(view: View) {
         super.setInputView(view)
-        val screenHeight = resources.displayMetrics.heightPixels
-        val imeHeight = (screenHeight * 0.32).toInt()
         view.layoutParams?.height = ViewGroup.LayoutParams.MATCH_PARENT
         val inputArea = window?.window?.decorView?.findViewById<FrameLayout>(android.R.id.inputArea)
         inputArea?.layoutParams?.height = ViewGroup.LayoutParams.MATCH_PARENT
+        applyInputPanelHeight()
+    }
+
+    private fun applyInputPanelHeight() {
+        val screenHeight = resources.displayMetrics.heightPixels
+        val isLandscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+        val imeHeight = (screenHeight * if (isLandscape) 0.42f else 0.32f).toInt()
         inputPanelView?.layoutParams?.let { params ->
             params.height = imeHeight
             inputPanelView?.layoutParams = params
@@ -297,6 +303,7 @@ class MoqiInputMethodService : InputMethodService() {
         }
         registerClipboardListener()
 
+        applyInputPanelHeight()
         updateKeyboard()
         showRimeInitializingIfNeeded()
         handler.post {
@@ -313,6 +320,7 @@ class MoqiInputMethodService : InputMethodService() {
 
     override fun onWindowShown() {
         super.onWindowShown()
+        applyInputPanelHeight()
         updateKeyboard()
     }
 
