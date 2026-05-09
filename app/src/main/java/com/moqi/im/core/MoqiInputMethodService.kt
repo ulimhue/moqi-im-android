@@ -630,6 +630,10 @@ class MoqiInputMethodService : InputMethodService() {
     }
 
     private fun handleBackspace() {
+        if (keyboardView?.isDirectCommitLayout() == true) {
+            currentInputConnection.deleteSurroundingText(1, 0)
+            return
+        }
         if (isT9Mode && currentMode == InputMode.PINYIN && t9PinyinDigits.isNotEmpty()) {
             t9PinyinDigits.deleteAt(t9PinyinDigits.lastIndex)
             updateT9PinyinOptions()
