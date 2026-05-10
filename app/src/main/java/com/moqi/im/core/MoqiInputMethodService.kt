@@ -26,6 +26,7 @@ import android.view.inputmethod.InputMethodManager
 import android.widget.FrameLayout
 import android.widget.Toast
 import com.moqi.im.BuildConfig
+import com.moqi.im.moqiAndroidDataDir
 import com.moqi.im.engine.CandidateEntry
 import com.moqi.im.engine.CandidateEntrySource
 import com.moqi.im.engine.InputMode
@@ -192,7 +193,7 @@ class MoqiInputMethodService : InputMethodService() {
         isEngineInitializing = true
         showRimeInitializingIfNeeded()
         engineRunner = MoqiImeEngineRunner(
-            androidDataDir = applicationContext.filesDir.absolutePath,
+            androidDataDir = applicationContext.moqiAndroidDataDir().absolutePath,
             initialGuid = guidForMode(currentMode)
         ) { schemaId ->
             isEngineInitializing = false
@@ -239,12 +240,15 @@ class MoqiInputMethodService : InputMethodService() {
                 }
             }
             override fun onSchemeSet(name: String) {
+                showLongMessage("正在切换方案集: $name")
                 engineRunner.selectSchemeSet(name) { result, schemaId ->
                     if (!result.result.success) {
                         applyMoqiResult(result.result)
+                        showLongMessage("方案集切换失败: ${result.result.error.ifBlank { name }}")
                         return@selectSchemeSet
                     }
                     applySchemaLayout(schemaId)
+                    showMessage("方案集切换完成: $name")
                     refreshMenuPanel()
                 }
             }
@@ -1393,7 +1397,7 @@ class MoqiInputMethodService : InputMethodService() {
         composeView?.setComposingText("正在下载方案集...")
         downloadExecutor.execute {
             val result = runCatching {
-                val root = File(applicationContext.filesDir, "Moqi").apply { mkdirs() }
+                val root = File(applicationContext.moqiAndroidDataDir(), "Moqi").apply { mkdirs() }
                 val target = File(root, name).canonicalFile
                 val temp = File(root, ".$name-download").canonicalFile
                 if (!target.path.startsWith(root.canonicalPath + File.separator)) {
@@ -1417,12 +1421,15 @@ class MoqiInputMethodService : InputMethodService() {
             handler.post {
                 result.onSuccess { schemeSet ->
                     showMessage("方案集下载完成: $schemeSet")
+                    showLongMessage("正在切换方案集: $schemeSet")
                     engineRunner.selectSchemeSet(schemeSet) { engineResult, schemaId ->
                         if (!engineResult.result.success) {
                             applyMoqiResult(engineResult.result)
+                            showLongMessage("方案集切换失败: ${engineResult.result.error.ifBlank { schemeSet }}")
                             return@selectSchemeSet
                         }
                         applySchemaLayout(schemaId)
+                        showMessage("方案集切换完成: $schemeSet")
                         refreshMenuPanel()
                     }
                 }.onFailure { error ->
@@ -1502,6 +1509,11 @@ class MoqiInputMethodService : InputMethodService() {
     private fun showMessage(message: String) {
         composeView?.setComposingText(message)
         Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+    }
+
+    private fun showLongMessage(message: String) {
+        composeView?.setComposingText(message)
+        Toast.makeText(this, message, Toast.LENGTH_LONG).show()
     }
 
     private fun loadInputModePreference() {

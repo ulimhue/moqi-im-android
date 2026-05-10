@@ -17,6 +17,18 @@
             android:key="rime_schema"
             android:title="@string/pref_rime_schema"
             android:summary="@string/pref_rime_loading" />
+        <Preference
+            android:key="rime_shared_dir"
+            android:title="@string/pref_rime_shared_dir"
+            android:summary="@string/pref_rime_shared_dir_summary" />
+        <Preference
+            android:key="rime_import_shared_dir"
+            android:title="@string/pref_rime_import_shared_dir"
+            android:summary="@string/pref_rime_import_shared_dir_summary" />
+        <Preference
+            android:key="rime_export_shared_dir"
+            android:title="@string/pref_rime_export_shared_dir"
+            android:summary="@string/pref_rime_export_shared_dir_summary" />
     </PreferenceCategory>
 
     <PreferenceCategory android:title="键盘">

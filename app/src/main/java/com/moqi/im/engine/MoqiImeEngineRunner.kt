@@ -252,7 +252,7 @@ class MoqiImeEngineRunner(
     companion object {
         private const val TAG = "MoqiImeEngineRunner"
         private const val SLOW_LOG_THRESHOLD_MS = 30L
-        private const val SCHEME_SET_READY_ATTEMPTS = 40
+        private const val SCHEME_SET_READY_ATTEMPTS = 120
         private const val SCHEME_SET_READY_DELAY_MS = 150L
     }
 }
