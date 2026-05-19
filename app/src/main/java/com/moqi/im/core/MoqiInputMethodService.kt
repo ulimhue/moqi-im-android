@@ -1360,7 +1360,7 @@ class MoqiInputMethodService : InputMethodService() {
                 }
                 candidateView?.appendExpandedCandidateEntries(
                     pageIndex = expandedCandidatePageIndex,
-                    entries = result.candidateEntries
+                    entries = candidateEntriesForDisplay(result.candidateEntries)
                 )
                 if (expandedCandidateInitialPrefetchRemaining > 0) {
                     handler.post { loadNextExpandedCandidatePage() }
