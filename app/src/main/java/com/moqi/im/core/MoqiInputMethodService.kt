@@ -187,6 +187,7 @@ class MoqiInputMethodService : InputMethodService() {
     private val t9InferredPinyinBySegment = mutableMapOf<Int, String>()
     private var t9Runnable: Runnable? = null
     private var t9ReplayGeneration: Long = 0L
+    private var t9HighlightedCandidateIndex: Int = 0
     private val T9_TIMEOUT: Long = 800L
 
     private val t9KeyMap = mapOf(
@@ -753,6 +754,13 @@ class MoqiInputMethodService : InputMethodService() {
                 t9PinyinDigits.isEmpty() ||
                 t9ActiveSegmentIndex !in segments.indices
         )
+        refreshT9ComposeDisplayIfNeeded()
+    }
+
+    private fun refreshT9ComposeDisplayIfNeeded() {
+        if (!isT9Mode || currentMode != InputMode.PINYIN || t9PinyinDigits.isEmpty()) return
+        composingText.clear()
+        composingText.append(t9DisplayComposition())
         updateComposeView()
     }
 
@@ -764,6 +772,7 @@ class MoqiInputMethodService : InputMethodService() {
         t9SelectedPinyinBySegment.clear()
         t9InferredPinyinBySegment.clear()
         t9ActiveSegmentIndex = 0
+        t9HighlightedCandidateIndex = 0
         updateT9PinyinOptions()
         t9Runnable = null
     }
@@ -1033,8 +1042,9 @@ class MoqiInputMethodService : InputMethodService() {
             updateT9PinyinOptions()
         }
 
-        updateT9InferredPinyin(result.candidateEntries)
-        val displayComposition = t9DisplayComposition().takeIf { it.isNotBlank() } ?: result.composition
+        t9HighlightedCandidateIndex = result.highlightedCandidateIndex.coerceAtLeast(0)
+        updateT9InferredPinyin(result.candidateEntries, t9HighlightedCandidateIndex)
+        val displayComposition = resolveT9DisplayComposition(result)
         composingText.clear()
         composingText.append(displayComposition)
         if (displayComposition.isNotBlank() || result.showCandidates) {
@@ -1055,28 +1065,47 @@ class MoqiInputMethodService : InputMethodService() {
         return result.handled
     }
 
+    /** 九键仍用 comment 推断预编辑拼音，但候选栏不展示 comment。 */
     private fun candidateEntriesForDisplay(entries: List<CandidateEntry>): List<CandidateEntry> {
         if (!isT9Mode || currentMode != InputMode.PINYIN || t9PinyinDigits.isEmpty()) return entries
         return entries.map { it.copy(comment = "") }
     }
 
-    private fun updateT9InferredPinyin(entries: List<CandidateEntry>) {
+    private fun updateT9InferredPinyin(entries: List<CandidateEntry>, highlightIndex: Int) {
         if (!isT9Mode || currentMode != InputMode.PINYIN || t9PinyinDigits.isEmpty()) return
         if (t9PinyinDigits.contains('1')) return
         val segments = t9Segments()
-        val inferred = entries.firstOrNull()
-            ?.comment
-            ?.trim()
-            ?.split(Regex("\\s+"))
-            .orEmpty()
-        if (inferred.size < segments.size) return
+        val entry = entries.getOrNull(highlightIndex) ?: entries.firstOrNull() ?: return
+        val syllables = entry.comment.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
+        if (syllables.size != segments.size) return
         segments.indices.forEach { index ->
             if (!t9SelectedPinyinBySegment.containsKey(index)) {
                 val segment = segments[index]
                 t9InferredPinyinBySegment[index] =
-                    T9Pinyin.prefixForDigits(inferred[index], segment) ?: T9Pinyin.defaultPinyinFor(segment)
+                    T9Pinyin.prefixForDigits(syllables[index], segment) ?: syllables[index]
             }
         }
+    }
+
+    private fun resolveT9DisplayComposition(result: MoqiImeResult): String {
+        if (!isT9Mode || currentMode != InputMode.PINYIN || t9PinyinDigits.isEmpty()) {
+            return result.composition
+        }
+        return buildT9ComposeDisplay(result.candidateEntries)
+            ?: t9DisplayComposition().takeIf { it.isNotBlank() }
+            ?: result.composition
+    }
+
+    /** 预编辑区始终展示拼音；未选音节用高亮候选 comment 或默认音节，不显示数字键码。 */
+    private fun buildT9ComposeDisplay(entries: List<CandidateEntry>): String? {
+        val segments = t9Segments()
+        if (segments.isEmpty()) return null
+        val highlighted = entries.getOrNull(t9HighlightedCandidateIndex) ?: entries.firstOrNull()
+        highlighted?.comment?.let { comment ->
+            T9Pinyin.compositionFromComment(comment, segments, t9SelectedPinyinBySegment)?.let { return it }
+        }
+        val display = t9DisplayComposition()
+        return display.takeIf { it.isNotBlank() }
     }
 
     private fun t9Segments(): List<String> = T9Pinyin.segmentDigits(t9PinyinDigits.toString())
@@ -1269,8 +1298,7 @@ class MoqiInputMethodService : InputMethodService() {
     }
 
     private fun updateComposeView() {
-        val displayText = t9DisplayComposition().takeIf { it.isNotBlank() } ?: composingText.toString()
-        composeView?.setComposingText(displayText)
+        composeView?.setComposingText(composingText.toString())
     }
 
     private fun showRimeInitializingIfNeeded() {

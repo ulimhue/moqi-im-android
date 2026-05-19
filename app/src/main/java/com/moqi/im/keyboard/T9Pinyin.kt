@@ -127,4 +127,19 @@ object T9Pinyin {
         segmentDigits(digits).joinToString("'") { defaultPinyinFor(it) }
 
     fun defaultPinyinFor(digits: String): String = optionsFor(digits, limit = 1).firstOrNull() ?: digits
+
+    /** 用候选 comment（空格分隔音节）还原与 T9 分段一致的预编辑拼音。 */
+    fun compositionFromComment(
+        comment: String,
+        segments: List<String>,
+        selectedBySegment: Map<Int, String> = emptyMap(),
+    ): String? {
+        val syllables = comment.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
+        if (syllables.size != segments.size) return null
+        return segments.indices.joinToString("'") { index ->
+            selectedBySegment[index]
+                ?: prefixForDigits(syllables[index], segments[index])
+                ?: syllables[index]
+        }
+    }
 }

@@ -28,6 +28,20 @@ class T9PinyinTest {
     }
 
     @Test
+    fun compositionFromComment_mapsSyllablesToSegments() {
+        assertEquals(
+            "ni'hao'ma",
+            T9Pinyin.compositionFromComment("ni hao ma", listOf("64", "426", "62")),
+        )
+        assertEquals(
+            "ni'gan'ma",
+            T9Pinyin.compositionFromComment("ni gan ma", listOf("64", "426", "62")),
+        )
+        assertEquals("zhao", T9Pinyin.compositionFromComment("zhao", listOf("9426")))
+        assertEquals(null, T9Pinyin.compositionFromComment("ni hao", listOf("64", "426", "62")))
+    }
+
+    @Test
     fun prefixForDigits_trimsCandidatePinyinToTypedT9Prefix() {
         assertEquals("z", T9Pinyin.prefixForDigits("zai", "9"))
         assertEquals("xi", T9Pinyin.prefixForDigits("xian", "94"))

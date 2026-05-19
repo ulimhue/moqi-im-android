@@ -42,7 +42,8 @@ data class MoqiImeResult(
     val candidateEntries: List<CandidateEntry>,
     val showCandidates: Boolean,
     val message: String,
-    val error: String
+    val error: String,
+    val highlightedCandidateIndex: Int = 0,
 )
 
 class MoqiImeSession(
@@ -388,7 +389,8 @@ private fun MobileResponse?.toResult(): MoqiImeResult {
         candidateEntries = displayEntries,
         showCandidates = showCandidates,
         message = message.orEmpty(),
-        error = error.orEmpty()
+        error = error.orEmpty(),
+        highlightedCandidateIndex = if (hasCandidateCursor) candidateCursor.toInt() else 0,
     )
 }
 
