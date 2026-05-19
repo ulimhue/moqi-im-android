@@ -28,6 +28,23 @@ class T9PinyinTest {
     }
 
     @Test
+    fun engineInputFromDigitBuffer_convertsSeparatorOneToApostrophe() {
+        assertEquals("94'26", T9Pinyin.engineInputFromDigitBuffer("94126"))
+        assertEquals("64'426'62", T9Pinyin.engineInputFromDigitBuffer("641426162"))
+    }
+
+    @Test
+    fun displayPinyinFromComment_usesFullCommentWhenSegmentCountDiffers() {
+        val segments = listOf("34", "91", "43", "426", "33", "749", "782", "43")
+        val comment = "di yi ge hao yong de shu ru fa"
+        assertEquals(
+            "di'yi'ge'hao'yong'de'shu'ru'fa",
+            T9Pinyin.displayPinyinFromComment(comment, segments),
+        )
+        assertEquals(null, T9Pinyin.displayPinyinFromComment(comment, segments, mapOf(0 to "di")))
+    }
+
+    @Test
     fun compositionFromComment_mapsSyllablesToSegments() {
         assertEquals(
             "ni'hao'ma",

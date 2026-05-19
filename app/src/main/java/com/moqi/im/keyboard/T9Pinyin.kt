@@ -123,6 +123,10 @@ object T9Pinyin {
 
     fun t9SchemaInputForDigits(digits: String): String = digits
 
+    /** 将侧栏数字缓冲（含分词键 `1`）转为 Rime 九键引擎输入。 */
+    fun engineInputFromDigitBuffer(digitBuffer: String): String =
+        digitBuffer.replace('1', '\'')
+
     fun defaultCompositionForDigits(digits: String): String =
         segmentDigits(digits).joinToString("'") { defaultPinyinFor(it) }
 
@@ -134,7 +138,7 @@ object T9Pinyin {
         segments: List<String>,
         selectedBySegment: Map<Int, String> = emptyMap(),
     ): String? {
-        val syllables = comment.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
+        val syllables = syllablesFromComment(comment)
         if (syllables.size != segments.size) return null
         return segments.indices.joinToString("'") { index ->
             selectedBySegment[index]
@@ -142,4 +146,24 @@ object T9Pinyin {
                 ?: syllables[index]
         }
     }
+
+    /**
+     * 预编辑区拼音展示：分段与 comment 一致时按段对齐；否则在未手动选音节时用整句 comment。
+     */
+    fun displayPinyinFromComment(
+        comment: String,
+        segments: List<String>,
+        selectedBySegment: Map<Int, String> = emptyMap(),
+    ): String? {
+        val syllables = syllablesFromComment(comment)
+        if (syllables.isEmpty()) return null
+        compositionFromComment(comment, segments, selectedBySegment)?.let { return it }
+        if (selectedBySegment.isEmpty()) {
+            return syllables.joinToString("'")
+        }
+        return null
+    }
+
+    fun syllablesFromComment(comment: String): List<String> =
+        comment.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
 }
