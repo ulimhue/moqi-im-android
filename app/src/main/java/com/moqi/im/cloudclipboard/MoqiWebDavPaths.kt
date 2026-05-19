@@ -6,7 +6,7 @@ package com.moqi.im.cloudclipboard
  * ```
  * {设置目录}/
  *   clip/     # 云剪贴板 .txt
- *   dict/     # 用户词库（预留）
+ *   dict/     # 用户词库快照，按 方案集/设备/ 分层
  * ```
  */
 object MoqiWebDavPaths {

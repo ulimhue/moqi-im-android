@@ -59,6 +59,7 @@
     <string name="theme_pepsi">百事可乐</string>
     <string name="pref_sound">按键音效</string>
     <string name="pref_vibrate">按键振动</string>
+    <string name="pref_sync_settings_category">同步设置</string>
     <string name="pref_cloud_clipboard_category">云剪贴板</string>
     <string name="pref_cloud_clipboard_enabled">启用云剪贴板</string>
     <string name="pref_cloud_clipboard_enabled_summary">通过 WebDAV 在设备间同步纯文本剪贴板（默认关闭）</string>
@@ -77,6 +78,11 @@
     <string name="pref_cloud_clipboard_test_failed">连接失败：%1$s</string>
     <string name="pref_cloud_clipboard_password_dialog_title">WebDAV 密码</string>
     <string name="pref_cloud_clipboard_password_saved">密码已保存</string>
+    <string name="pref_user_dict_sync">同步用户词库</string>
+    <string name="pref_user_dict_sync_summary">通过 WebDAV 双向同步当前方案集的 Rime 用户词库</string>
+    <string name="pref_user_dict_syncing">正在同步用户词库…</string>
+    <string name="pref_user_dict_sync_done">用户词库同步完成：下载 %1$d，上传 %2$d</string>
+    <string name="pref_user_dict_sync_failed">用户词库同步失败：%1$s</string>
     <string name="pref_privacy">隐私声明</string>
     <string name="pref_privacy_summary">输入与候选在本地处理；语音在设备本地识别。云剪贴板默认关闭，开启后仅将纯文本同步到您配置的 WebDAV。</string>
     <string name="pref_debug_category">调试</string>

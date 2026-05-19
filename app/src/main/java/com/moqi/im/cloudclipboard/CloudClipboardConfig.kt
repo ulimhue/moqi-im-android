@@ -21,4 +21,11 @@ data class CloudClipboardConfig(
         val clipPath = MoqiWebDavPaths.clipPathUnder(settingsRootPath).trimStart('/')
         return "$base/$clipPath"
     }
+
+    /** 用户词库目录：{设置目录}/dict/ */
+    fun dictDirectoryUrl(): String {
+        val base = baseUrl.trimEnd('/')
+        val dictPath = MoqiWebDavPaths.dictPathUnder(settingsRootPath).trimStart('/')
+        return "$base/$dictPath"
+    }
 }

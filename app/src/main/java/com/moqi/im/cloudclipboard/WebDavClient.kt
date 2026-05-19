@@ -9,6 +9,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.xmlpull.v1.XmlPullParser
 import org.xmlpull.v1.XmlPullParserFactory
 import java.io.IOException
+import java.net.URLEncoder
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 import java.text.SimpleDateFormat
@@ -91,11 +92,122 @@ class WebDavClient(private val config: CloudClipboardConfig) {
         }
     }
 
-  /**
+    @Throws(IOException::class)
+    fun listUserDictSnapshots(schemeSet: String): List<UserDictSnapshotEntry> {
+        requireValidSchemeSet(schemeSet)
+        ensureRemoteSchemeSetDictDirectory(schemeSet)
+        val response = propfind(dictSchemeSetDirectoryUrl(schemeSet), depth = 1)
+        if (!response.isSuccessful) {
+            throw IOException("PROPFIND dict failed: HTTP ${response.code}")
+        }
+        val body = response.body?.string().orEmpty()
+        response.close()
+        return parsePropfind(body)
+            .filter { isSyncDeviceDirName(it.name) }
+            .distinctBy { it.name }
+            .flatMap { device ->
+                val deviceUrl = dictDeviceDirectoryUrl(schemeSet, device.name)
+                runCatching {
+                    propfind(deviceUrl, depth = 1).use { deviceResp ->
+                        if (!deviceResp.isSuccessful) return@runCatching emptyList()
+                        parsePropfind(deviceResp.body?.string().orEmpty())
+                            .filter { isUserDictSnapshotFileName(it.name) }
+                            .distinctBy { it.name }
+                            .map { file ->
+                                UserDictSnapshotEntry(
+                                    schemeSet = schemeSet,
+                                    deviceId = device.name,
+                                    name = file.name,
+                                    lastModified = file.lastModified
+                                )
+                            }
+                    }
+                }.getOrDefault(emptyList())
+            }
+    }
+
+    @Throws(IOException::class)
+    fun downloadUserDictSnapshot(entry: UserDictSnapshotEntry): ByteArray {
+        requireValidSchemeSet(entry.schemeSet)
+        requireValidDeviceId(entry.deviceId)
+        requireValidSnapshotName(entry.name)
+        val request = Request.Builder()
+            .url(dictSnapshotUrl(entry.schemeSet, entry.deviceId, entry.name))
+            .header("Authorization", authHeader)
+            .get()
+            .build()
+        http.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                throw IOException("GET user dict snapshot failed: HTTP ${response.code}")
+            }
+            return response.body?.bytes() ?: ByteArray(0)
+        }
+    }
+
+    @Throws(IOException::class)
+    fun uploadUserDictSnapshot(schemeSet: String, deviceId: String, name: String, data: ByteArray) {
+        requireValidSchemeSet(schemeSet)
+        requireValidDeviceId(deviceId)
+        requireValidSnapshotName(name)
+        ensureRemoteSchemeSetDictDirectory(schemeSet)
+        val deviceUrl = dictDeviceDirectoryUrl(schemeSet, deviceId)
+        if (!directoryExists(deviceUrl) && !tryMkcol(deviceUrl)) {
+            throw IOException("词库同步设备目录无法创建")
+        }
+        val request = Request.Builder()
+            .url(dictSnapshotUrl(schemeSet, deviceId, name))
+            .header("Authorization", authHeader)
+            .put(data.toRequestBody("text/plain; charset=utf-8".toMediaType()))
+            .build()
+        http.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                throw IOException("PUT user dict snapshot failed: HTTP ${response.code}")
+            }
+        }
+    }
+
+    /**
      * 先验证 WebDAV 根路径，再确保远程子目录存在（兼容飞牛等需先访问 / 的 NAS）。
      */
     @Throws(IOException::class)
     private fun ensureRemoteDirectory() {
+        ensureSettingsRoot()
+
+        val clipUrl = config.clipDirectoryUrl().trimEnd('/') + "/"
+        if (directoryExists(clipUrl)) return
+
+        if (tryMkcol(clipUrl) && directoryExists(clipUrl)) return
+
+        throw IOException(
+            "剪贴板目录 ${MoqiWebDavPaths.CLIP_DIR}/ 无法创建。" +
+                "请在 ${config.settingsRootPath} 下手动新建 clip 文件夹"
+        )
+    }
+
+    @Throws(IOException::class)
+    private fun ensureRemoteDictDirectory() {
+        ensureSettingsRoot()
+        val dictUrl = config.dictDirectoryUrl().trimEnd('/') + "/"
+        if (directoryExists(dictUrl)) return
+        if (tryMkcol(dictUrl) && directoryExists(dictUrl)) return
+        throw IOException(
+            "词库同步目录 ${MoqiWebDavPaths.DICT_DIR}/ 无法创建。" +
+                "请在 ${config.settingsRootPath} 下手动新建 dict 文件夹"
+        )
+    }
+
+    @Throws(IOException::class)
+    private fun ensureRemoteSchemeSetDictDirectory(schemeSet: String) {
+        requireValidSchemeSet(schemeSet)
+        ensureRemoteDictDirectory()
+        val schemeSetUrl = dictSchemeSetDirectoryUrl(schemeSet)
+        if (directoryExists(schemeSetUrl)) return
+        if (tryMkcol(schemeSetUrl) && directoryExists(schemeSetUrl)) return
+        throw IOException("词库同步方案集目录 $schemeSet 无法创建")
+    }
+
+    @Throws(IOException::class)
+    private fun ensureSettingsRoot() {
         val rootUrl = rootUrl()
         propfind(rootUrl, depth = 0).use { rootResp ->
             when (rootResp.code) {
@@ -119,16 +231,6 @@ class WebDavClient(private val config: CloudClipboardConfig) {
                 )
             }
         }
-
-        val clipUrl = config.clipDirectoryUrl().trimEnd('/') + "/"
-        if (directoryExists(clipUrl)) return
-
-        if (tryMkcol(clipUrl) && directoryExists(clipUrl)) return
-
-        throw IOException(
-            "剪贴板目录 ${MoqiWebDavPaths.CLIP_DIR}/ 无法创建。" +
-                "请在 ${config.settingsRootPath} 下手动新建 clip 文件夹"
-        )
     }
 
     private fun rootUrl(): String = config.baseUrl.trimEnd('/') + "/"
@@ -146,6 +248,21 @@ class WebDavClient(private val config: CloudClipboardConfig) {
         val dir = config.clipDirectoryUrl().trimEnd('/')
         val safeName = filename.trimStart('/')
         return "$dir/$safeName"
+    }
+
+    private fun dictSchemeSetDirectoryUrl(schemeSet: String): String {
+        val dir = config.dictDirectoryUrl().trimEnd('/')
+        return "$dir/${encodePathSegment(schemeSet)}/"
+    }
+
+    private fun dictDeviceDirectoryUrl(schemeSet: String, deviceId: String): String {
+        val dir = dictSchemeSetDirectoryUrl(schemeSet).trimEnd('/')
+        return "$dir/${encodePathSegment(deviceId)}/"
+    }
+
+    private fun dictSnapshotUrl(schemeSet: String, deviceId: String, name: String): String {
+        val dir = dictDeviceDirectoryUrl(schemeSet, deviceId).trimEnd('/')
+        return "$dir/${encodePathSegment(name)}"
     }
 
     private fun propfind(url: String, depth: Int) =
@@ -231,11 +348,43 @@ class WebDavClient(private val config: CloudClipboardConfig) {
 
     private fun isClipFileName(name: String): Boolean {
         if (!name.endsWith(".txt", ignoreCase = true)) return false
-        if (name.contains('/')) return false
+        if (name.contains('/') || name.contains('\\')) return false
         val base = name.dropLast(4)
         if (base.length == 32 && base.all { it in '0'..'9' || it in 'a'..'f' }) return true
         return name.startsWith("clip_", ignoreCase = true)
     }
+
+    private fun isUserDictSnapshotFileName(name: String): Boolean {
+        if (!name.endsWith(".userdb.txt", ignoreCase = true)) return false
+        if (name.any { it == '/' || it == '\\' || it == ':' }) return false
+        val base = name.removeSuffix(".userdb.txt")
+        return base.isNotBlank() && base != "." && base != ".."
+    }
+
+    private fun isSyncDeviceDirName(name: String): Boolean {
+        if (name.isBlank() || name == "." || name == ".." || name.length > 128) return false
+        return name.all { it.isLetterOrDigit() || it == '-' || it == '_' || it == '.' }
+    }
+
+    private fun isSchemeSetDirName(name: String): Boolean {
+        if (name.isBlank() || name == "." || name == ".." || name.length > 128) return false
+        return name.none { it.code < 0x20 || it == '/' || it == '\\' || it == ':' }
+    }
+
+    private fun requireValidSnapshotName(name: String) {
+        require(isUserDictSnapshotFileName(name)) { "invalid user dict snapshot filename" }
+    }
+
+    private fun requireValidDeviceId(deviceId: String) {
+        require(isSyncDeviceDirName(deviceId)) { "invalid sync device id" }
+    }
+
+    private fun requireValidSchemeSet(schemeSet: String) {
+        require(isSchemeSetDirName(schemeSet)) { "invalid scheme set name" }
+    }
+
+    private fun encodePathSegment(value: String): String =
+        URLEncoder.encode(value, StandardCharsets.UTF_8.name()).replace("+", "%20")
 
     private fun parseHttpDate(raw: String): Long {
         val formats = listOf(
@@ -263,7 +412,7 @@ class WebDavClient(private val config: CloudClipboardConfig) {
             </d:propfind>"""
 
         fun createOrNull(config: CloudClipboardConfig): WebDavClient? {
-            if (!CloudClipboardPrefs.isConfigComplete(config)) return null
+            if (!CloudClipboardPrefs.isWebDavConfigComplete(config)) return null
             if (!WebDavUrlPolicy.isAllowed(config.baseUrl)) {
                 Log.w(TAG, "WebDAV URL not allowed: ${config.baseUrl}")
                 return null

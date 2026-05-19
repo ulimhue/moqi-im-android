@@ -66,9 +66,11 @@ object CloudClipboardPrefs {
     /** @deprecated 使用 [normalizeSettingsRoot] */
     fun normalizeRemotePath(raw: String): String = normalizeSettingsRoot(raw)
 
-    fun isConfigComplete(config: CloudClipboardConfig): Boolean =
-        config.enabled &&
-            config.baseUrl.isNotBlank() &&
+    fun isWebDavConfigComplete(config: CloudClipboardConfig): Boolean =
+        config.baseUrl.isNotBlank() &&
             config.username.isNotBlank() &&
             config.password.isNotBlank()
+
+    fun isConfigComplete(config: CloudClipboardConfig): Boolean =
+        config.enabled && isWebDavConfigComplete(config)
 }

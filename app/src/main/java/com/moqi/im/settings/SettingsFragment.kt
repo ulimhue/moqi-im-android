@@ -32,6 +32,7 @@ import com.moqi.im.R
 import com.moqi.im.cloudclipboard.CloudClipboardPrefs
 import com.moqi.im.cloudclipboard.WebDavUrlPolicy
 import com.moqi.im.cloudclipboard.CloudClipboardSync
+import com.moqi.im.cloudclipboard.UserDictWebDavSync
 import kotlinx.coroutines.runBlocking
 import com.moqi.im.data.RimeSafSync
 import com.moqi.im.engine.MoqiImeSession
@@ -465,6 +466,10 @@ class SettingsFragment : PreferenceFragmentCompat() {
             testCloudClipboardConnection()
             true
         }
+        findPreference<Preference>("user_dict_webdav_sync")?.setOnPreferenceClickListener {
+            syncUserDictWithWebDav()
+            true
+        }
     }
 
     private fun updateCloudClipboardPasswordSummary() {
@@ -516,6 +521,40 @@ class SettingsFragment : PreferenceFragmentCompat() {
                         requireContext(),
                         getString(
                             R.string.pref_cloud_clipboard_test_failed,
+                            error.message.orEmpty().ifBlank { error::class.java.simpleName }
+                        ),
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+        }
+    }
+
+    private fun syncUserDictWithWebDav() {
+        val context = context?.applicationContext ?: return
+        showRimeProgress(R.string.pref_user_dict_syncing)
+        executor?.execute {
+            val result = runCatching {
+                UserDictWebDavSync(context).sync()
+            }
+            mainHandler.post {
+                hideRimeProgress()
+                if (!isAdded) return@post
+                result.onSuccess { syncResult ->
+                    Toast.makeText(
+                        requireContext(),
+                        getString(
+                            R.string.pref_user_dict_sync_done,
+                            syncResult.downloaded,
+                            syncResult.uploaded
+                        ),
+                        Toast.LENGTH_LONG
+                    ).show()
+                }.onFailure { error ->
+                    Toast.makeText(
+                        requireContext(),
+                        getString(
+                            R.string.pref_user_dict_sync_failed,
                             error.message.orEmpty().ifBlank { error::class.java.simpleName }
                         ),
                         Toast.LENGTH_LONG

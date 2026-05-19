@@ -51,22 +51,26 @@ class SetupActivity : AppCompatActivity() {
             val statusText = findViewById<TextView>(R.id.tv_setup_status)
             val btnEnable = findViewById<Button>(R.id.btn_enable_ime)
             val btnSelect = findViewById<Button>(R.id.btn_select_ime)
+            val btnSettings = findViewById<Button>(R.id.btn_settings)
 
             when {
                 !enabled -> {
                     statusText.text = getString(R.string.setup_step1)
                     btnEnable.visibility = View.VISIBLE
                     btnSelect.visibility = View.GONE
+                    btnSettings.visibility = View.GONE
                 }
                 !selected -> {
                     statusText.text = getString(R.string.setup_step2)
                     btnEnable.visibility = View.GONE
                     btnSelect.visibility = View.VISIBLE
+                    btnSettings.visibility = View.GONE
                 }
                 else -> {
                     statusText.text = getString(R.string.setup_done)
                     btnEnable.visibility = View.GONE
                     btnSelect.visibility = View.GONE
+                    btnSettings.visibility = View.VISIBLE
                 }
             }
         } catch (e: Exception) {
@@ -75,6 +79,7 @@ class SetupActivity : AppCompatActivity() {
                 findViewById<TextView>(R.id.tv_setup_status).text = getString(R.string.setup_step1)
                 findViewById<Button>(R.id.btn_enable_ime).visibility = View.VISIBLE
                 findViewById<Button>(R.id.btn_select_ime).visibility = View.VISIBLE
+                findViewById<Button>(R.id.btn_settings).visibility = View.GONE
             }
         }
     }

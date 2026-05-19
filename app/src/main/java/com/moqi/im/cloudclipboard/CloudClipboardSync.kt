@@ -149,8 +149,8 @@ class CloudClipboardSync(context: Context) {
 
     private fun clientOrThrow(): WebDavClient {
         reloadConfig()
-        if (!CloudClipboardPrefs.isConfigComplete(config)) {
-            throw IllegalStateException("云剪贴板未配置完整")
+        if (!CloudClipboardPrefs.isWebDavConfigComplete(config)) {
+            throw IllegalStateException("WebDAV 未配置完整")
         }
         return WebDavClient.createOrNull(config)
             ?: throw IllegalStateException(WebDavUrlPolicy.rejectionMessage())

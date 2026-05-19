@@ -64,12 +64,7 @@
             android:defaultValue="true" />
     </PreferenceCategory>
 
-    <PreferenceCategory android:title="@string/pref_cloud_clipboard_category">
-        <SwitchPreferenceCompat
-            android:key="cloud_clipboard_enabled"
-            android:title="@string/pref_cloud_clipboard_enabled"
-            android:summary="@string/pref_cloud_clipboard_enabled_summary"
-            android:defaultValue="false" />
+    <PreferenceCategory android:title="@string/pref_sync_settings_category">
         <EditTextPreference
             android:key="cloud_clipboard_url"
             android:title="@string/pref_cloud_clipboard_url"
@@ -92,6 +87,15 @@
             android:defaultValue="/moqi-input-method/"
             android:dialogTitle="@string/pref_cloud_clipboard_remote_path"
             app:useSimpleSummaryProvider="true" />
+        <Preference
+            android:key="cloud_clipboard_test"
+            android:title="@string/pref_cloud_clipboard_test"
+            android:summary="@string/pref_cloud_clipboard_test_summary" />
+        <SwitchPreferenceCompat
+            android:key="cloud_clipboard_enabled"
+            android:title="@string/pref_cloud_clipboard_enabled"
+            android:summary="@string/pref_cloud_clipboard_enabled_summary"
+            android:defaultValue="false" />
         <ListPreference
             android:key="cloud_clipboard_min_interval_sec"
             android:title="@string/pref_cloud_clipboard_min_interval"
@@ -100,9 +104,9 @@
             android:defaultValue="10"
             app:useSimpleSummaryProvider="true" />
         <Preference
-            android:key="cloud_clipboard_test"
-            android:title="@string/pref_cloud_clipboard_test"
-            android:summary="@string/pref_cloud_clipboard_test_summary" />
+            android:key="user_dict_webdav_sync"
+            android:title="@string/pref_user_dict_sync"
+            android:summary="@string/pref_user_dict_sync_summary" />
     </PreferenceCategory>
 
     <PreferenceCategory android:title="隐私">
