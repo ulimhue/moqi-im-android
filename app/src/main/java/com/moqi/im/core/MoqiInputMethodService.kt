@@ -38,8 +38,11 @@ import com.moqi.im.engine.SherpaVoiceEngine
 import com.moqi.im.keyboard.CandidateView
 import com.moqi.im.keyboard.ComposeView
 import com.moqi.im.keyboard.KeyCode
+import com.moqi.im.keyboard.CandidateActionMenu
 import com.moqi.im.keyboard.KeyboardMenuView
 import com.moqi.im.keyboard.KeyboardView
+import com.moqi.im.keyboard.QuickReplyPanelView
+import com.moqi.im.quickreply.QuickReplyStore
 import com.moqi.im.keyboard.T9Pinyin
 import com.moqi.im.util.ImeDebugLog
 import com.moqi.im.voice.ModelManager
@@ -118,6 +121,7 @@ class MoqiInputMethodService : InputMethodService() {
 
     private var keyboardView: KeyboardView? = null
     private var keyboardMenuView: KeyboardMenuView? = null
+    private var quickReplyPanelView: QuickReplyPanelView? = null
     private var candidateView: CandidateView? = null
     private var composeView: ComposeView? = null
     private var inputPanelView: View? = null
@@ -209,6 +213,7 @@ class MoqiInputMethodService : InputMethodService() {
         imeView = layoutInflater.inflate(com.moqi.im.R.layout.ime_view, null)
         keyboardView = imeView?.findViewById(com.moqi.im.R.id.keyboard_view)
         keyboardMenuView = imeView?.findViewById(com.moqi.im.R.id.keyboard_menu_view)
+        quickReplyPanelView = imeView?.findViewById(com.moqi.im.R.id.quick_reply_panel_view)
         candidateView = imeView?.findViewById(com.moqi.im.R.id.candidate_view)
         composeView = imeView?.findViewById(com.moqi.im.R.id.compose_view)
         inputPanelView = imeView?.findViewById(com.moqi.im.R.id.input_panel)
@@ -309,6 +314,25 @@ class MoqiInputMethodService : InputMethodService() {
         candidateView?.setOnEmojiClickListener {
             keyboardView?.setLayout(KeyboardView.Layout.EMOJI)
         }
+        candidateView?.setOnQuickReplyClickListener {
+            showQuickReplyPanel()
+        }
+        candidateView?.setOnCandidateLongPressListener { index, entry, expanded ->
+            showCandidateActionMenu(index, entry, expanded)
+        }
+        quickReplyPanelView?.callback = object : QuickReplyPanelView.Callback {
+            override fun onBack() = hideQuickReplyPanel()
+            override fun onReplySelected(text: String) {
+                commitText(text)
+                hideQuickReplyPanel()
+            }
+            override fun onReplyDelete(index: Int) {
+                if (QuickReplyStore.removeAt(this@MoqiInputMethodService, index)) {
+                    refreshQuickReplyPanel()
+                    showMessage("已删除")
+                }
+            }
+        }
         candidateView?.setOnKeyboardDismissListener {
             requestHideSelf(0)
         }
@@ -329,8 +353,14 @@ class MoqiInputMethodService : InputMethodService() {
 
     override fun onStartInput(attribute: EditorInfo?, restarting: Boolean) {
         super.onStartInput(attribute, restarting)
+        candidateView?.dismissActionMenu()
         clearTextEngineState()
         updateUI()
+    }
+
+    override fun onFinishInput() {
+        candidateView?.dismissActionMenu()
+        super.onFinishInput()
     }
 
     override fun onWindowShown() {
@@ -1442,6 +1472,67 @@ class MoqiInputMethodService : InputMethodService() {
         keyboardMenuView?.visibility = View.GONE
         keyboardView?.visibility = View.VISIBLE
         updateKeyboard()
+    }
+
+    private fun showQuickReplyPanel() {
+        setCandidateExpanded(false)
+        keyboardView?.visibility = View.GONE
+        keyboardMenuView?.visibility = View.GONE
+        quickReplyPanelView?.visibility = View.VISIBLE
+        quickReplyPanelView?.bringToFront()
+        refreshQuickReplyPanel()
+    }
+
+    private fun hideQuickReplyPanel() {
+        quickReplyPanelView?.visibility = View.GONE
+        keyboardView?.visibility = View.VISIBLE
+        updateKeyboard()
+    }
+
+    private fun refreshQuickReplyPanel() {
+        quickReplyPanelView?.render(QuickReplyStore.load(this))
+    }
+
+    private fun showCandidateActionMenu(index: Int, entry: CandidateEntry, expanded: Boolean) {
+        val anchor = candidateView ?: return
+        val canResetFrequency = !expanded &&
+            entry.source == CandidateEntrySource.RIME &&
+            anchor.rimeCandidateIndexFor(index) >= 0
+        CandidateActionMenu.show(
+            anchor = anchor,
+            canResetFrequency = canResetFrequency,
+            onResetFrequency = { resetCandidateFrequency(index, entry) },
+            onAddQuickReply = { addQuickReply(entry.text) }
+        )
+    }
+
+    private fun resetCandidateFrequency(index: Int, entry: CandidateEntry) {
+        val view = candidateView ?: return
+        if (entry.source != CandidateEntrySource.RIME) return
+        val rimeIndex = view.rimeCandidateIndexFor(index)
+        if (rimeIndex < 0) return
+        if (!::engineRunner.isInitialized) {
+            showRimeInitializingIfNeeded()
+            return
+        }
+        engineRunner.deleteCandidateOnCurrentPage(rimeIndex) { engineResult ->
+            val result = engineResult.result
+            if (result.success) {
+                applyMoqiResult(result)
+                showMessage("已恢复「${entry.text}」默认词频")
+            } else {
+                showMessage(result.error.ifBlank { "恢复词频失败" })
+            }
+        }
+    }
+
+    private fun addQuickReply(text: String) {
+        if (QuickReplyStore.add(this, text)) {
+            showMessage("已加入快捷回复")
+            refreshQuickReplyPanel()
+        } else {
+            showMessage("已在快捷回复中")
+        }
     }
 
     private fun refreshMenuPanel() {

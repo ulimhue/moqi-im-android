@@ -5,6 +5,9 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
+import android.graphics.drawable.Drawable
+import android.os.Handler
+import android.os.Looper
 import android.text.TextPaint
 import android.text.TextUtils
 import android.util.AttributeSet
@@ -14,6 +17,7 @@ import android.view.View
 import android.view.ViewConfiguration
 import android.view.VelocityTracker
 import android.widget.OverScroller
+import androidx.core.content.ContextCompat
 import com.moqi.im.R
 import com.moqi.im.engine.CandidateEntry
 import com.moqi.im.engine.CandidateEntrySource
@@ -47,12 +51,18 @@ class CandidateView @JvmOverloads constructor(
     private var controlRects: List<RectF> = emptyList()
     private var menuButtonRect = RectF()
     private var emojiButtonRect = RectF()
+    private var quickReplyButtonRect = RectF()
     private var moreButtonRect = RectF()
     private var pressedIndex: Int = -1
     private var pressedControl: Int = -1
     private var menuButtonPressed = false
     private var emojiButtonPressed = false
+    private var quickReplyButtonPressed = false
     private var moreButtonPressed = false
+    private var candidateLongPressTriggered = false
+    private var candidateLongPressRunnable: Runnable? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var quickReplyIcon: Drawable? = null
     private var expanded = false
     private var scrollOffset = 0f
     private var maxScrollOffset = 0f
@@ -77,6 +87,8 @@ class CandidateView @JvmOverloads constructor(
     private var onExpandedLoadNextPage: (() -> Unit)? = null
     private var onMenuClick: (() -> Unit)? = null
     private var onEmojiClick: (() -> Unit)? = null
+    private var onQuickReplyClick: (() -> Unit)? = null
+    private var onCandidateLongPress: ((Int, CandidateEntry, Boolean) -> Unit)? = null
     private var onKeyboardDismiss: (() -> Unit)? = null
     private var onClipboardDismiss: (() -> Unit)? = null
 
@@ -95,6 +107,11 @@ class CandidateView @JvmOverloads constructor(
                 android.content.res.Configuration.UI_MODE_NIGHT_YES
 
     init {
+        applyThemeColors()
+        quickReplyIcon = ContextCompat.getDrawable(context, R.drawable.ic_quick_reply)
+    }
+
+    private fun applyThemeColors() {
         setBackgroundColor(if (isDarkMode) DARK_BG else ThemePalette.current(context).candidateBackgroundColor)
     }
 
@@ -177,6 +194,14 @@ class CandidateView @JvmOverloads constructor(
         onEmojiClick = listener
     }
 
+    fun setOnQuickReplyClickListener(listener: () -> Unit) {
+        onQuickReplyClick = listener
+    }
+
+    fun setOnCandidateLongPressListener(listener: (Int, CandidateEntry, Boolean) -> Unit) {
+        onCandidateLongPress = listener
+    }
+
     fun setOnKeyboardDismissListener(listener: () -> Unit) {
         onKeyboardDismiss = listener
     }
@@ -207,7 +232,6 @@ class CandidateView @JvmOverloads constructor(
         super.onDraw(canvas)
 
         val theme = ThemePalette.current(context)
-        setBackgroundColor(if (isDarkMode) DARK_BG else theme.candidateBackgroundColor)
         textPaint.color = if (isDarkMode) 0xFFF3F5F7.toInt() else theme.textColor
         commentPaint.color = if (isDarkMode) 0xFF9CA3AA.toInt() else theme.textColor
         dividerPaint.color = if (isDarkMode) 0xFF3A4148.toInt() else 0xFFD7DCE2.toInt()
@@ -269,6 +293,9 @@ class CandidateView @JvmOverloads constructor(
         if (shouldShowEmojiButton()) {
             drawEmojiButton(canvas)
         }
+        if (shouldShowQuickReplyButton()) {
+            drawQuickReplyButton(canvas)
+        }
         if (candidates.isNotEmpty()) {
             if (moreButtonPressed) {
                 canvas.drawRoundRect(moreButtonRect, dp(6f), dp(6f), highlightPaint)
@@ -287,14 +314,21 @@ class CandidateView @JvmOverloads constructor(
             commentPaint.color = if (isDarkMode) 0xFF858C94.toInt() else theme.textColor
             commentPaint.textAlign = Paint.Align.CENTER
             val baseline = height / 2f - (commentPaint.descent() + commentPaint.ascent()) / 2f
-            val centerX = (emojiButtonRect.right + moreButtonRect.left) / 2f
+            val statusLeft = if (!quickReplyButtonRect.isEmpty) {
+                quickReplyButtonRect.right
+            } else if (!emojiButtonRect.isEmpty) {
+                emojiButtonRect.right
+            } else {
+                menuButtonRect.right
+            }
+            val centerX = (statusLeft + moreButtonRect.left) / 2f
             val fullText = if (imeStatusDetail.isBlank()) {
                 "墨奇"
             } else {
                 "墨奇 · $imeStatusDetail"
             }
             val textPaint = TextPaint(commentPaint)
-            val maxWidth = (moreButtonRect.left - emojiButtonRect.right - dp(12f)).coerceAtLeast(dp(48f))
+            val maxWidth = (moreButtonRect.left - statusLeft - dp(12f)).coerceAtLeast(dp(48f))
             val displayed = TextUtils.ellipsize(fullText, textPaint, maxWidth, TextUtils.TruncateAt.END)
             canvas.drawText(displayed, 0, displayed.length, centerX, baseline, commentPaint)
             if (moreButtonPressed) {
@@ -347,24 +381,37 @@ class CandidateView @JvmOverloads constructor(
                 lastY = event.y
                 isDragging = false
                 pageChangeRequested = false
+                cancelCandidateLongPress()
+                candidateLongPressTriggered = false
                 menuButtonPressed = shouldShowMenuButton() && menuButtonRect.contains(event.x, event.y)
                 emojiButtonPressed = !menuButtonPressed &&
                     shouldShowEmojiButton() &&
                     emojiButtonRect.contains(event.x, event.y)
+                quickReplyButtonPressed = !menuButtonPressed &&
+                    !emojiButtonPressed &&
+                    shouldShowQuickReplyButton() &&
+                    quickReplyButtonRect.contains(event.x, event.y)
                 pressedControl = findControlAt(event.x, event.y)
                 moreButtonPressed = !menuButtonPressed &&
                     !emojiButtonPressed &&
+                    !quickReplyButtonPressed &&
                     (pressedControl >= 0 || moreButtonRect.contains(event.x, event.y)) &&
                     (candidates.isNotEmpty() || !expanded)
-                pressedIndex = if (menuButtonPressed || emojiButtonPressed || moreButtonPressed) {
+                pressedIndex = if (
+                    menuButtonPressed || emojiButtonPressed || quickReplyButtonPressed || moreButtonPressed
+                ) {
                     -1
                 } else {
                     findItemAt(touchContentX(event.x), touchContentY(event.y))
                 }
+                scheduleCandidateLongPressIfNeeded(pressedIndex)
                 invalidate()
                 return true
             }
             MotionEvent.ACTION_MOVE -> {
+                if (candidateLongPressTriggered) {
+                    return true
+                }
                 if (menuButtonPressed) {
                     if (!menuButtonRect.contains(event.x, event.y)) {
                         menuButtonPressed = false
@@ -378,6 +425,18 @@ class CandidateView @JvmOverloads constructor(
                         invalidate()
                     }
                     return true
+                }
+                if (quickReplyButtonPressed) {
+                    if (!quickReplyButtonRect.contains(event.x, event.y)) {
+                        quickReplyButtonPressed = false
+                        invalidate()
+                    }
+                    return true
+                }
+                if (pressedIndex >= 0 && !candidateLongPressTriggered) {
+                    if (abs(event.x - downX) > touchSlop || abs(event.y - downY) > touchSlop) {
+                        cancelCandidateLongPress()
+                    }
                 }
                 if (moreButtonPressed) {
                     if (pressedControl >= 0 && findControlAt(event.x, event.y) != pressedControl) {
@@ -428,10 +487,22 @@ class CandidateView @JvmOverloads constructor(
                         onEmojiClick?.invoke()
                     }
                     emojiButtonPressed = false
+                    cancelCandidateLongPress()
                     recycleVelocityTracker()
                     invalidate()
                     return true
                 }
+                if (quickReplyButtonPressed) {
+                    if (quickReplyButtonRect.contains(event.x, event.y)) {
+                        onQuickReplyClick?.invoke()
+                    }
+                    quickReplyButtonPressed = false
+                    cancelCandidateLongPress()
+                    recycleVelocityTracker()
+                    invalidate()
+                    return true
+                }
+                cancelCandidateLongPress()
                 if (moreButtonPressed) {
                     val control = findControlAt(event.x, event.y)
                     if (expanded && control == pressedControl) {
@@ -456,6 +527,13 @@ class CandidateView @JvmOverloads constructor(
                     return true
                 }
                 val idx = findItemAt(touchContentX(event.x), touchContentY(event.y))
+                if (candidateLongPressTriggered) {
+                    candidateLongPressTriggered = false
+                    pressedIndex = -1
+                    recycleVelocityTracker()
+                    invalidate()
+                    return true
+                }
                 if (!isDragging && idx in candidates.indices && idx == pressedIndex) {
                     if (expanded) {
                         expandedCandidates.getOrNull(idx)?.let { candidate ->
@@ -484,9 +562,11 @@ class CandidateView @JvmOverloads constructor(
                 pressedControl = -1
                 menuButtonPressed = false
                 emojiButtonPressed = false
+                quickReplyButtonPressed = false
                 moreButtonPressed = false
                 pageChangeRequested = false
                 isDragging = false
+                cancelCandidateLongPress()
                 recycleVelocityTracker()
                 invalidate()
                 return true
@@ -499,6 +579,7 @@ class CandidateView @JvmOverloads constructor(
         val padding = dp(4f)
         val buttonWidth = dp(48f)
         val emojiButtonWidth = dp(64f)
+        val quickReplyButtonWidth = dp(56f)
         menuButtonRect = if (candidates.isEmpty()) {
             RectF(0f, 0f, buttonWidth, totalHeight)
         } else {
@@ -509,8 +590,18 @@ class CandidateView @JvmOverloads constructor(
         } else {
             RectF()
         }
+        quickReplyButtonRect = if (candidates.isEmpty()) {
+            RectF(emojiButtonRect.right, 0f, emojiButtonRect.right + quickReplyButtonWidth, totalHeight)
+        } else {
+            RectF()
+        }
         moreButtonRect = RectF((totalWidth - buttonWidth).coerceAtLeast(0f), 0f, totalWidth.toFloat(), totalHeight)
-        val contentLeft = if (emojiButtonRect.isEmpty) menuButtonRect.right else emojiButtonRect.right
+        val contentLeft = when {
+            !quickReplyButtonRect.isEmpty -> quickReplyButtonRect.right
+            !emojiButtonRect.isEmpty -> emojiButtonRect.right
+            !menuButtonRect.isEmpty -> menuButtonRect.right
+            else -> 0f
+        }
         val contentRight = moreButtonRect.left
         val contentWidth = (contentRight - contentLeft).coerceAtLeast(0f)
         if (expanded) {
@@ -610,6 +701,8 @@ class CandidateView @JvmOverloads constructor(
 
     private fun shouldShowEmojiButton(): Boolean = candidates.isEmpty() && !emojiButtonRect.isEmpty
 
+    private fun shouldShowQuickReplyButton(): Boolean = candidates.isEmpty() && !quickReplyButtonRect.isEmpty
+
     private fun drawMenuButton(canvas: Canvas) {
         if (menuButtonPressed) {
             canvas.drawRoundRect(menuButtonRect, dp(6f), dp(6f), highlightPaint)
@@ -630,6 +723,42 @@ class CandidateView @JvmOverloads constructor(
         val baseline = emojiButtonRect.centerY() - (commentPaint.descent() + commentPaint.ascent()) / 2f
         canvas.drawText("😀", emojiButtonRect.centerX(), baseline, commentPaint)
         commentPaint.textAlign = Paint.Align.LEFT
+    }
+
+    private fun drawQuickReplyButton(canvas: Canvas) {
+        if (quickReplyButtonPressed) {
+            canvas.drawRoundRect(quickReplyButtonRect, dp(6f), dp(6f), highlightPaint)
+        }
+        canvas.drawLine(quickReplyButtonRect.right, dp(8f), quickReplyButtonRect.right, height - dp(8f), dividerPaint)
+        val icon = quickReplyIcon ?: return
+        val size = dp(22f).toInt()
+        val left = (quickReplyButtonRect.centerX() - size / 2f).toInt()
+        val top = (quickReplyButtonRect.centerY() - size / 2f).toInt()
+        icon.setBounds(left, top, left + size, top + size)
+        icon.draw(canvas)
+    }
+
+    private fun scheduleCandidateLongPressIfNeeded(index: Int) {
+        if (index !in candidates.indices) return
+        val entry = candidates[index]
+        val capturedIndex = index
+        candidateLongPressRunnable = Runnable {
+            candidateLongPressTriggered = true
+            pressedIndex = -1
+            performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+            invalidate()
+            onCandidateLongPress?.invoke(capturedIndex, entry, expanded)
+        }
+        mainHandler.postDelayed(candidateLongPressRunnable!!, CANDIDATE_LONG_PRESS_DELAY_MS)
+    }
+
+    fun dismissActionMenu() {
+        CandidateActionMenu.dismiss()
+    }
+
+    private fun cancelCandidateLongPress() {
+        candidateLongPressRunnable?.let { mainHandler.removeCallbacks(it) }
+        candidateLongPressRunnable = null
     }
 
     private fun drawMoreArrow(canvas: Canvas, rect: RectF) {
@@ -781,6 +910,7 @@ class CandidateView @JvmOverloads constructor(
         private const val CONTROL_COLLAPSE = 0
         private const val CONTROL_SCROLL_UP = 1
         private const val CONTROL_SCROLL_DOWN = 2
+        private const val CANDIDATE_LONG_PRESS_DELAY_MS = 420L
     }
 
     private data class ExpandedCandidate(

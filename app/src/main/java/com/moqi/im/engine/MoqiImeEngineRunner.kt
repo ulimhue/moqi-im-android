@@ -91,6 +91,12 @@ class MoqiImeEngineRunner(
         }
     }
 
+    fun deleteCandidateOnCurrentPage(index: Int, callback: (EngineResult) -> Unit) {
+        submit("deleteCandidateOnCurrentPage index=$index", callback) {
+            session?.deleteCandidateOnCurrentPage(index) ?: notReadyResult()
+        }
+    }
+
     fun changeCandidatePage(backward: Boolean, callback: (EngineResult) -> Unit) {
         submit("changeCandidatePage backward=$backward", callback) {
             session?.changePage(backward) ?: notReadyResult()

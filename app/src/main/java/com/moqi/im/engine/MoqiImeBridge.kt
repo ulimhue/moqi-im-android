@@ -116,6 +116,23 @@ class MoqiImeSession(
         }
     }
 
+    fun deleteCandidateOnCurrentPage(index: Int): MoqiImeResult {
+        val activeSession = session ?: return initErrorResult()
+        return runCatching {
+            val start = System.nanoTime()
+            val result = activeSession.deleteCandidateOnCurrentPage(index.toLong()).toResult()
+            logDuration(
+                "deleteCandidateOnCurrentPage",
+                start,
+                "index=$index success=${result.success} candidates=${result.candidates.size}"
+            )
+            result
+        }.getOrElse { error ->
+            Log.e(TAG, "deleteCandidateOnCurrentPage failed index=$index", error)
+            error.toResult()
+        }
+    }
+
     fun replayText(text: String): MoqiImeResult {
         val activeSession = session ?: return initErrorResult()
         return runCatching {
