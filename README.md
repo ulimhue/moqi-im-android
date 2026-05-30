@@ -169,7 +169,3 @@ adb install -r .\app\build\outputs\apk\debug\app-debug.apk
 墨奇音形 <https://github.com/gaboolic/rime-shuangpin-fuzhuma>
 
 墨奇五笔整句 <https://github.com/gaboolic/rime-wubi-sentence>
-
-## 许可证
-
-MIT License
