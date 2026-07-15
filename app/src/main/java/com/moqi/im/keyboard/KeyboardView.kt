@@ -361,7 +361,7 @@ class KeyboardView @JvmOverloads constructor(
     private fun usesStyledModeSwitchKey(): Boolean =
         isQwertyLayout() || isT9Layout()
 
-    /** 中文模式：中/英（中醒目）；英文模式：英/中（英醒目）。参考系统键盘样式。 */
+    /** 中文模式：中（左上醒目）+ 英（右下次要）；英文模式：英（左上）+ 中（右下）。参考系统键盘样式。 */
     private fun drawModeSwitchKey(canvas: Canvas, rect: RectF) {
         val dark = isDarkMode
         val chineseActive =
@@ -373,34 +373,38 @@ class KeyboardView @JvmOverloads constructor(
             isFakeBoldText = false
         }
         val inactivePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            textAlign = Paint.Align.LEFT
+            textAlign = Paint.Align.RIGHT
             textSize = keyTextSize(MODE_SWITCH_INACTIVE_TEXT_SP, 0.28f)
-            color = if (dark) 0xFF6E6E82.toInt() else ThemePalette.current(context).textColor
+            color = if (dark) 0x995C5C70.toInt()
+            else (ThemePalette.current(context).textColor and 0x00FFFFFF) or 0x66000000
         }
-        val slashPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            textAlign = Paint.Align.LEFT
-            textSize = keyTextSize(MODE_SWITCH_SLASH_TEXT_SP, 0.24f)
-            color = if (dark) 0xFF5C5C70.toInt() else ThemePalette.current(context).textColor
+        val active = if (chineseActive) "中" else "英"
+        val inactive = if (chineseActive) "英" else "中"
+
+        // 浅浅的对角分割线（左下 → 右上，"/" 方向），画在文字下层。
+        val dividerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = dp(1f)
+            strokeCap = Paint.Cap.ROUND
+            color = if (dark) 0x33FFFFFF else 0x22000000
         }
-        val left = if (chineseActive) "中" else "英"
-        val right = if (chineseActive) "英" else "中"
-        val leftP = activePaint
-        val rightP = inactivePaint
+        // 45°：水平与垂直位移相等，以键中心为中点的一段短斜线，避免压住文字。
+        val half = dp(MODE_SWITCH_DIVIDER_HALF_LEN_DP)
+        val cx = rect.centerX()
+        val cy = rect.centerY()
+        canvas.drawLine(
+            cx - half, cy + half,
+            cx + half, cy - half,
+            dividerPaint
+        )
 
-        fun baselineFor(p: Paint): Float =
-            rect.centerY() - (p.descent() + p.ascent()) / 2f
-
-        val wL = leftP.measureText(left)
-        val wS = slashPaint.measureText("/")
-        val wR = rightP.measureText(right)
-        val gap = dp(MODE_SWITCH_INNER_GAP_DP)
-        val total = wL + gap + wS + gap + wR
-        var x = rect.centerX() - total / 2f
-        canvas.drawText(left, x, baselineFor(leftP), leftP)
-        x += wL + gap
-        canvas.drawText("/", x, baselineFor(slashPaint), slashPaint)
-        x += wS + gap
-        canvas.drawText(right, x, baselineFor(rightP), rightP)
+        val inset = dp(MODE_SWITCH_CORNER_INSET_DP)
+        // 左上角：醒目字，尽量贴左上（再上移一点，避开 45° 斜线）
+        val topBaseline = rect.top + inset - activePaint.ascent() - dp(MODE_SWITCH_ACTIVE_UP_DP)
+        canvas.drawText(active, rect.left + inset, topBaseline, activePaint)
+        // 右下角：次要字，尽量贴右下
+        val bottomBaseline = rect.bottom - inset - inactivePaint.descent() + dp(MODE_SWITCH_INACTIVE_DOWN_DP)
+        canvas.drawText(inactive, rect.right - inset, bottomBaseline, inactivePaint)
     }
 
     private fun drawShiftKey(canvas: Canvas, rect: RectF) {
@@ -886,10 +890,16 @@ class KeyboardView @JvmOverloads constructor(
         private const val T9_LETTER_LONG_PRESS_DELAY_MS = 320L
         private const val T9_LETTER_POPUP_ITEM_WIDTH_DP = 44f
         private const val T9_LETTER_POPUP_HEIGHT_DP = 48f
-        private const val MODE_SWITCH_ACTIVE_TEXT_SP = 17.5f
-        private const val MODE_SWITCH_INACTIVE_TEXT_SP = 12f
-        private const val MODE_SWITCH_SLASH_TEXT_SP = 11f
-        private const val MODE_SWITCH_INNER_GAP_DP = 1.5f
+        private const val MODE_SWITCH_ACTIVE_TEXT_SP = 15.5f
+        private const val MODE_SWITCH_INACTIVE_TEXT_SP = 10.5f
+        /** 中/英 键左上角与右下角字符距键帽边缘的内边距。 */
+        private const val MODE_SWITCH_CORNER_INSET_DP = 2.5f
+        /** 中/英 键 45° 分割线自中心起的半长（水平=垂直位移）。 */
+        private const val MODE_SWITCH_DIVIDER_HALF_LEN_DP = 6.5f
+        /** 中/英 键左上角醒目字额外上移量，避开斜线。 */
+        private const val MODE_SWITCH_ACTIVE_UP_DP = 3f
+        /** 中/英 键右下角次要字额外下移量，避开斜线。 */
+        private const val MODE_SWITCH_INACTIVE_DOWN_DP = 2f
         /** 26 键 / 9 键：主字母再上移的 dp；副字距底边用 [QWERTY_DUAL_LINE_SUB_BOTTOM_INSET_DP]。 */
         private const val QWERTY_DUAL_LINE_PRIMARY_UP_DP = 4f
         /** 26 键 / 9 键副字距键帽底边（其它布局默认 7dp；越小副字越靠下）。 */

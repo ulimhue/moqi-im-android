@@ -89,8 +89,8 @@ object KeyboardBottomRowLayout {
                 KEY_COMMA -> KeyDefinition(if (chinese) "，" else ",", KeyCode.COMMA, 1f)
                 KEY_SPACE -> KeyDefinition(spaceBarLabel(if (chinese) "空格" else "Space"), KeyCode.SPACE, 5.1f)
                 KEY_PERIOD -> KeyDefinition(if (chinese) "。" else ".", KeyCode.PERIOD, 1f)
-                KEY_MODE -> KeyDefinition("中/英", KeyCode.MODE_SWITCH, 1.75f)
-                KEY_ENTER -> KeyDefinition("↵", KeyCode.ENTER, 1.3f)
+                KEY_MODE -> KeyDefinition("中/英", KeyCode.MODE_SWITCH, 1f)
+                KEY_ENTER -> KeyDefinition("↵", KeyCode.ENTER, 1f)
                 else -> error("Unsupported QWERTY bottom-row key: $id")
             }
         }
