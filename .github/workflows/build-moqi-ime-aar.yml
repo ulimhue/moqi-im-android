@@ -60,7 +60,7 @@ jobs:
         run: |
           pwsh -File moqi-im-android/scripts/build-moqi-ime-aar.ps1 `
             -MoqiImeRoot moqi-ime `
-            -OutputAar moqi-im-android/app/libs/moqi-ime.aar `
+            -OutputAar ${{ github.workspace }}/moqi-im-android/app/libs/moqi-ime.aar `
             -Target android/arm64 `
             -AndroidApi 24
 
