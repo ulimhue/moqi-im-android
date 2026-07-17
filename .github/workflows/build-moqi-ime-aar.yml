@@ -25,7 +25,7 @@ jobs:
       - name: Checkout librime
         uses: actions/checkout@v4
         with:
-          repository: rime/librime
+          repository: gaboolic/librime
           path: librime
           submodules: true
 
