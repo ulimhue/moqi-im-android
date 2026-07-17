@@ -46,6 +46,16 @@ jobs:
       - name: Install Android NDK
         run: sdkmanager "ndk;27.1.12297006"
 
+      - name: Pre-clone Lua plugin dependencies
+        run: |
+          $pluginDir = "librime/plugins/lua"
+          if (-not (Test-Path "$pluginDir/CMakeLists.txt")) {
+            git clone --depth=1 https://github.com/hchunhui/librime-lua.git $pluginDir
+          }
+          if (-not (Test-Path "$pluginDir/thirdparty/lua5.4/lua.h")) {
+            git clone --depth=1 -b thirdparty https://github.com/hchunhui/librime-lua.git "$pluginDir/thirdparty"
+          }
+
       - name: Build moqi-ime AAR
         run: |
           pwsh -File moqi-im-android/scripts/build-moqi-ime-aar.ps1 `
