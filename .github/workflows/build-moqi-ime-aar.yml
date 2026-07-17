@@ -1,0 +1,55 @@
+name: Build moqi-ime AAR
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build moqi-ime.aar (arm64)
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout this repository
+        uses: actions/checkout@v4
+        with:
+          path: moqi-im-android
+
+      - name: Checkout moqi-ime
+        uses: actions/checkout@v4
+        with:
+          repository: gaboolic/moqi-ime
+          path: moqi-ime
+          submodules: true
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android NDK
+        run: sdkmanager "ndk;27.1.12297006"
+
+      - name: Build moqi-ime AAR
+        run: |
+          pwsh -File moqi-im-android/scripts/build-moqi-ime-aar.ps1 `
+            -MoqiImeRoot moqi-ime `
+            -OutputAar moqi-im-android/app/libs/moqi-ime.aar `
+            -Target android/arm64 `
+            -AndroidApi 24
+
+      - name: Upload moqi-ime.aar
+        uses: actions/upload-artifact@v4
+        with:
+          name: moqi-ime-aar
+          path: moqi-im-android/app/libs/moqi-ime.aar
+          if-no-files-found: error
